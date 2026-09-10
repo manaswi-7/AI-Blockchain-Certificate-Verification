@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/certificate_db}
@@ -17,7 +17,7 @@ app:
   jwt-secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value}
   ai-url: ${AI_SERVICE_URL:http://localhost:8000}
   verification-url: ${VERIFICATION_URL:http://localhost:3000/verify}
-  blockchain-rpc-url: ${POLYGON_AMOY_RPC_URL:}
+  blockchain-rpc-url: ${BLOCKCHAIN_RPC_URL:}
   blockchain-private-key: ${BLOCKCHAIN_PRIVATE_KEY:}
   blockchain-contract-address: ${BLOCKCHAIN_CONTRACT_ADDRESS:}
   blockchain-chain-id: ${BLOCKCHAIN_CHAIN_ID:80002}
