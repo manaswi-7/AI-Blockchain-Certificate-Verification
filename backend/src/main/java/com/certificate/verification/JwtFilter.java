@@ -16,15 +16,8 @@ public class JwtFilter extends OncePerRequestFilter {
   private final JwtService jwt;
   public JwtFilter(JwtService jwt) { this.jwt = jwt; }
   @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
-    String h = req.getHeader("Authorization");
-    if (h != null && h.startsWith("Bearer ")) {
-      try {
-        String token = h.substring(7);
-        String email = jwt.subject(token);
-        var auth = new UsernamePasswordAuthenticationToken(email, null, java.util.List.of(new SimpleGrantedAuthority("ROLE_USER")));
-        SecurityContextHolder.getContext().setAuthentication(auth);
-      } catch (Exception ignored) { }
-    }
-    chain.doFilter(req, res);
+    String h=req.getHeader("Authorization");
+    if(h!=null&&h.startsWith("Bearer ")){try{String token=h.substring(7);String email=jwt.subject(token);String role=jwt.role(token);var auth=new UsernamePasswordAuthenticationToken(email,null,java.util.List.of(new SimpleGrantedAuthority("ROLE_"+role)));SecurityContextHolder.getContext().setAuthentication(auth);}catch(Exception ignored){}}
+    chain.doFilter(req,res);
   }
 }
