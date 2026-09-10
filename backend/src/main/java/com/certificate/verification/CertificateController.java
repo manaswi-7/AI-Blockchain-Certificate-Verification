@@ -2,6 +2,7 @@ package com.certificate.verification;
 
 import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -81,9 +82,9 @@ public class CertificateController {
   }
 
   /**
-   * Main public verification endpoint: the user uploads the certificate image.
-   * OCR identifies the certificate ID, AI gives an advisory visual assessment,
-   * and the uploaded file is cryptographically checked against the blockchain.
+   * Main public verification endpoint. The verifier only needs to upload the
+   * certificate image. OCR identifies the certificate ID, AI provides an
+   * advisory visual assessment, and SHA-256 + blockchain verify integrity.
    */
   @PostMapping(value = "/verify/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> verifyUpload(@RequestPart MultipartFile file) throws Exception {
@@ -99,12 +100,10 @@ public class CertificateController {
     }
 
     if (certificateId == null || certificateId.isBlank()) {
-      return Map.of(
-          "result", "UNVERIFIED",
-          "reason", "OCR could not identify a certificate ID. Please upload a clear certificate image.",
-          "aiPrediction", String.valueOf(aiResult.getOrDefault("classification", "SUSPICIOUS")),
-          "aiConfidence", aiResult.getOrDefault("confidence", 0.0),
-          "extractedFields", extracted == null ? Map.of() : extracted);
+      Map<String, Object> response = new HashMap<>();
+      response.put("result", "UNVERIFIED");
+      response.put("reason", "OCR could not identify a certificate ID. Please upload a clear certificate image.");
+      return withAi(response, aiResult);
     }
 
     String uploadedHash = sha256(file.getBytes());
@@ -118,9 +117,11 @@ public class CertificateController {
 
     if (rows.isEmpty()) {
       recordVerification(certificateId, hash, "INVALID", "Certificate ID not found");
-      return withAi(
-          Map.of("result", "INVALID", "certificateId", certificateId,
-              "reason", "Certificate ID was extracted, but it is not registered in the system."), aiResult);
+      Map<String, Object> response = new HashMap<>();
+      response.put("result", "INVALID");
+      response.put("certificateId", certificateId);
+      response.put("reason", "Certificate ID was extracted, but it is not registered in the system.");
+      return withAi(response, aiResult);
     }
 
     var certificate = rows.get(0);
@@ -155,7 +156,7 @@ public class CertificateController {
 
     recordVerification(certificateId, hash, result, reason + "; " + blockchainReason);
 
-    Map<String, Object> response = new java.util.HashMap<>();
+    Map<String, Object> response = new HashMap<>();
     response.put("result", result);
     response.put("certificateId", certificateId);
     response.put("hashMatch", hashMatch);
@@ -195,7 +196,7 @@ public class CertificateController {
     }
   }
 
-  private String sha256(byte[] data) throws RuntimeException {
+  private String sha256(byte[] data) {
     try {
       return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
     } catch (Exception e) {
