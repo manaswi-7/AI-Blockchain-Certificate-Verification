@@ -1,0 +1,10 @@
+generated/
+dataset/real/*.png
+dataset/tampered/*.png
+dataset/split/
+models/*.keras
+models/*.h5
+models/*.json
+.tamper_temp.jpg
+.venv/
+__pycache__/
