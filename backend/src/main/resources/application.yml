@@ -1,0 +1,14 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/certificate_db}
+    username: ${DB_USERNAME:certificate_user}
+    password: ${DB_PASSWORD:certificate_password}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+app:
+  jwt-secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value}
+  ai-url: ${AI_SERVICE_URL:http://localhost:8000}
