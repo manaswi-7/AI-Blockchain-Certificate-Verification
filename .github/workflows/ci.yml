@@ -1,0 +1,108 @@
+name: Project CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  backend:
+    name: Backend - Maven test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Run Maven tests
+        run: mvn -B test
+
+  ai-service:
+    name: AI service - Python checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: ai-service/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python files
+        run: python -m compileall -q .
+      - name: Check FastAPI app import
+        run: python -c "from app import app; print('FastAPI app import OK')"
+
+  frontend:
+    name: Frontend - Next.js build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build application
+        run: npm run build
+
+  blockchain:
+    name: Blockchain - Hardhat compile and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: blockchain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: blockchain/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Run contract tests
+        run: npx hardhat test
+
+  dataset:
+    name: Certificate dataset pipeline - syntax checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: certificate_generation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dataset dependencies
+        run: pip install -r requirements.txt
+      - name: Compile dataset scripts
+        run: python -m compileall -q .
