@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: certificate_db
+      POSTGRES_USER: certificate_user
+      POSTGRES_PASSWORD: certificate_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  ai-service:
+    build: ./ai-service
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
