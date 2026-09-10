@@ -1,0 +1,63 @@
+CREATE TABLE IF NOT EXISTS institutions (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  code VARCHAR(100) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  full_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(30) NOT NULL CHECK (role IN ('ADMIN','ISSUER','VERIFIER')),
+  institution_id BIGINT REFERENCES institutions(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS certificates (
+  id BIGSERIAL PRIMARY KEY,
+  certificate_id VARCHAR(100) UNIQUE NOT NULL,
+  recipient_name VARCHAR(255) NOT NULL,
+  course VARCHAR(255) NOT NULL,
+  institution VARCHAR(255) NOT NULL,
+  issue_date DATE NOT NULL,
+  validity VARCHAR(100),
+  status VARCHAR(30) NOT NULL DEFAULT 'ISSUED',
+  document_hash CHAR(64) NOT NULL,
+  blockchain_reference VARCHAR(255),
+  qr_code TEXT,
+  document_path TEXT,
+  created_by BIGINT REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS verification_records (
+  id BIGSERIAL PRIMARY KEY,
+  certificate_id VARCHAR(100),
+  supplied_hash CHAR(64),
+  result VARCHAR(30) NOT NULL,
+  reason TEXT,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_results (
+  id BIGSERIAL PRIMARY KEY,
+  certificate_id VARCHAR(100),
+  classification VARCHAR(30) NOT NULL,
+  confidence NUMERIC(5,4),
+  extracted_fields JSONB,
+  issues JSONB,
+  recommendation TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS blockchain_transactions (
+  id BIGSERIAL PRIMARY KEY,
+  certificate_id VARCHAR(100) NOT NULL,
+  transaction_hash VARCHAR(255),
+  network VARCHAR(100),
+  block_number BIGINT,
+  status VARCHAR(30) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
