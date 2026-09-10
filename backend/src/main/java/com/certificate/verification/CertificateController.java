@@ -1,5 +1,6 @@
 package com.certificate.verification;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -180,6 +181,10 @@ public class CertificateController {
     if (file.getSize() > 10_000_000) throw new IllegalArgumentException("File must be 10 MB or smaller");
     String type = file.getContentType();
     if (!("image/png".equals(type) || "image/jpeg".equals(type))) throw new IllegalArgumentException("Please upload a PNG or JPEG certificate image");
+  }
+
+  private String sha256(String text) {
+    return sha256(text.getBytes(StandardCharsets.UTF_8));
   }
 
   private String sha256(byte[] data) {
