@@ -81,11 +81,7 @@ public class CertificateController {
     return verifyRegisteredCertificate(certificateId, hash, null);
   }
 
-  /**
-   * Main public verification endpoint. The verifier only needs to upload the
-   * certificate image. OCR identifies the certificate ID, AI provides an
-   * advisory visual assessment, and SHA-256 + blockchain verify integrity.
-   */
+  /** Main public verification endpoint: upload the certificate image; no ID entry is required. */
   @PostMapping(value = "/verify/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> verifyUpload(@RequestPart MultipartFile file) throws Exception {
     validateImage(file);
@@ -106,8 +102,7 @@ public class CertificateController {
       return withAi(response, aiResult);
     }
 
-    String uploadedHash = sha256(file.getBytes());
-    return verifyRegisteredCertificate(certificateId, uploadedHash, aiResult);
+    return verifyRegisteredCertificate(certificateId, sha256(file.getBytes()), aiResult);
   }
 
   private Map<String, Object> verifyRegisteredCertificate(String certificateId, String hash, Map<?, ?> aiResult) {
@@ -136,7 +131,7 @@ public class CertificateController {
       blockchainReason = "Blockchain unavailable or not configured";
     }
 
-    String aiPrediction = aiResult == null ? "NOT_RUN" : String.valueOf(aiResult.getOrDefault("classification", "SUSPICIOUS"));
+    String aiPrediction = aiResult == null ? "NOT_RUN" : String.valueOf(valueOrDefault(aiResult, "classification", "SUSPICIOUS"));
     String result;
     String reason;
 
@@ -166,6 +161,11 @@ public class CertificateController {
     return withAi(response, aiResult);
   }
 
+  private Object valueOrDefault(Map<?, ?> map, String key, Object fallback) {
+    Object value = map.get(key);
+    return value == null ? fallback : value;
+  }
+
   private Map<String, Object> withAi(Map<String, Object> response, Map<?, ?> aiResult) {
     if (aiResult != null) {
       response.put("aiPrediction", aiResult.get("classification"));
@@ -184,12 +184,8 @@ public class CertificateController {
   }
 
   private void validateImage(MultipartFile file) {
-    if (file.isEmpty()) {
-      throw new IllegalArgumentException("Certificate image is required");
-    }
-    if (file.getSize() > 10_000_000) {
-      throw new IllegalArgumentException("File must be 10 MB or smaller");
-    }
+    if (file.isEmpty()) throw new IllegalArgumentException("Certificate image is required");
+    if (file.getSize() > 10_000_000) throw new IllegalArgumentException("File must be 10 MB or smaller");
     String type = file.getContentType();
     if (!("image/png".equals(type) || "image/jpeg".equals(type))) {
       throw new IllegalArgumentException("Please upload a PNG or JPEG certificate image");
