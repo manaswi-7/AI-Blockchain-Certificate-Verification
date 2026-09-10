@@ -9,6 +9,15 @@ spring:
     init:
       mode: always
       schema-locations: classpath:schema.sql
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 app:
   jwt-secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value}
   ai-url: ${AI_SERVICE_URL:http://localhost:8000}
+  verification-url: ${VERIFICATION_URL:http://localhost:3000/verify}
+  blockchain-rpc-url: ${POLYGON_AMOY_RPC_URL:}
+  blockchain-private-key: ${BLOCKCHAIN_PRIVATE_KEY:}
+  blockchain-contract-address: ${BLOCKCHAIN_CONTRACT_ADDRESS:}
+  blockchain-chain-id: ${BLOCKCHAIN_CHAIN_ID:80002}
