@@ -12,35 +12,194 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api")
 public class CertificateController {
-  private final JdbcTemplate db; private final QrService qr; private final BlockchainService blockchain; private final AiService ai;
-  public CertificateController(JdbcTemplate db,QrService qr,BlockchainService blockchain,AiService ai){this.db=db;this.qr=qr;this.blockchain=blockchain;this.ai=ai;}
-  @GetMapping("/health") public Map<String,String> health(){return Map.of("status","ok");}
+  private final JdbcTemplate db;
+  private final QrService qr;
+  private final BlockchainService blockchain;
+  private final AiService ai;
 
-  @PostMapping(value="/certificates",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-  public Map<String,Object> issue(@RequestParam String certificateId,@RequestParam String recipientName,@RequestParam String course,@RequestParam String institution,@RequestParam(required=false) String issueDate,@RequestParam(required=false,defaultValue="VALID") String validity,@RequestPart MultipartFile file)throws Exception{
-    if(file.isEmpty())throw new IllegalArgumentException("Certificate file is required");
-    if(file.getSize()>10_000_000)throw new IllegalArgumentException("File must be 10 MB or smaller");
-    String type=file.getContentType(); if(!("application/pdf".equals(type)||"image/png".equals(type)||"image/jpeg".equals(type)))throw new IllegalArgumentException("Only PDF, PNG and JPEG certificates are supported");
-    String date=issueDate==null||issueDate.isBlank()?LocalDate.now().toString():issueDate;
-    if(!db.queryForList("SELECT 1 FROM certificates WHERE certificate_id=?",certificateId).isEmpty())throw new IllegalArgumentException("Certificate ID already exists");
-    String documentHash=sha256(file.getBytes()); String certificateKey=sha256(certificateId);
-    String verificationUrl=System.getenv().getOrDefault("VERIFICATION_URL","http://localhost:3000/verify")+"/"+certificateId;
-    String qrCode=qr.generateDataUrl(verificationUrl); String txHash=blockchain.anchor(certificateKey,documentHash);
-    db.update("INSERT INTO certificates(certificate_id,recipient_name,course,institution,issue_date,validity,status,document_hash,blockchain_reference,qr_code) VALUES(?,?,?,?,?,?,'ISSUED',?,?,?)",certificateId,recipientName,course,institution,date,validity,documentHash,txHash,qrCode);
-    db.update("INSERT INTO blockchain_transactions(certificate_id,transaction_hash,network,status) VALUES(?,?,?,?)",certificateId,txHash,"Polygon Amoy","CONFIRMED");
-    try{ai.analyze(file.getBytes(),file.getOriginalFilename()==null?"certificate":file.getOriginalFilename());}catch(Exception ignored){}
-    return Map.of("certificateId",certificateId,"documentHash",documentHash,"blockchainTransaction",txHash,"qrCode",qrCode,"status","ISSUED");
+  public CertificateController(JdbcTemplate db, QrService qr, BlockchainService blockchain, AiService ai) {
+    this.db = db;
+    this.qr = qr;
+    this.blockchain = blockchain;
+    this.ai = ai;
   }
-  @GetMapping("/certificates") public Object list(){return db.queryForList("SELECT certificate_id,recipient_name,course,institution,issue_date,status,document_hash,blockchain_reference,qr_code FROM certificates ORDER BY created_at DESC");}
-  @GetMapping("/verify/{certificateId}") public Map<String,Object> verify(@PathVariable String certificateId,@RequestParam(required=false) String hash){
-    var rows=db.queryForList("SELECT certificate_id,recipient_name,course,institution,issue_date,status,document_hash,blockchain_reference,qr_code FROM certificates WHERE certificate_id=?",certificateId);
-    if(rows.isEmpty()){db.update("INSERT INTO verification_records(certificate_id,result,reason) VALUES(?,?,'Certificate ID not found')",certificateId,"INVALID");return Map.of("result","INVALID","reason","Certificate ID not found");}
-    var c=rows.get(0);boolean dbMatch=hash==null||hash.equalsIgnoreCase((String)c.get("document_hash"));boolean chainMatch=false;String chainReason="Blockchain verification not completed";
-    try{chainMatch=blockchain.verify(sha256(certificateId),String.valueOf(c.get("document_hash")));chainReason=chainMatch?"Blockchain hash matched":"Blockchain hash did not match";}catch(Exception e){chainReason="Blockchain unavailable or not configured";}
-    String result=dbMatch&&chainMatch?"GENUINE":(hash!=null&&!dbMatch?"TAMPERED":"INVALID");String reason=dbMatch&&chainMatch?"Database and blockchain hashes matched":(!dbMatch?"Supplied document hash does not match":"Certificate could not be verified on blockchain");
-    db.update("INSERT INTO verification_records(certificate_id,supplied_hash,result,reason) VALUES(?,?,?,?)",certificateId,hash,result,reason+"; "+chainReason);
-    return Map.of("result",result,"hashMatch",dbMatch,"blockchainMatch",chainMatch,"reason",reason,"certificate",c);
+
+  @GetMapping("/health")
+  public Map<String, String> health() {
+    return Map.of("status", "ok");
   }
-  @PostMapping(value="/verify/upload",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) public Map<String,Object> verifyUpload(@RequestParam String certificateId,@RequestPart MultipartFile file)throws Exception{if(file.isEmpty())throw new IllegalArgumentException("Certificate file is required");return verify(certificateId,sha256(file.getBytes()));}
-  private String sha256(byte[] data)throws Exception{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));}
+
+  @PostMapping(value = "/certificates", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Map<String, Object> issue(
+      @RequestParam String certificateId,
+      @RequestParam String recipientName,
+      @RequestParam String course,
+      @RequestParam String institution,
+      @RequestParam(required = false) String issueDate,
+      @RequestParam(required = false, defaultValue = "VALID") String validity,
+      @RequestPart MultipartFile file) throws Exception {
+
+    validateImage(file);
+    String date = issueDate == null || issueDate.isBlank() ? LocalDate.now().toString() : issueDate;
+
+    if (!db.queryForList("SELECT 1 FROM certificates WHERE certificate_id=?", certificateId).isEmpty()) {
+      throw new IllegalArgumentException("Certificate ID already exists");
+    }
+
+    String documentHash = sha256(file.getBytes());
+    String certificateKey = sha256(certificateId);
+    String verificationUrl = System.getenv().getOrDefault(
+        "VERIFICATION_URL", "http://localhost:3000/verify") + "/" + certificateId;
+    String qrCode = qr.generateDataUrl(verificationUrl);
+    String txHash = blockchain.anchor(certificateKey, documentHash);
+
+    db.update(
+        "INSERT INTO certificates(certificate_id,recipient_name,course,institution,issue_date,validity,status,document_hash,blockchain_reference,qr_code) VALUES(?,?,?,?,?,?,'ISSUED',?,?,?)",
+        certificateId, recipientName, course, institution, date, validity, documentHash, txHash, qrCode);
+    db.update(
+        "INSERT INTO blockchain_transactions(certificate_id,transaction_hash,network,status) VALUES(?,?,?,?)",
+        certificateId, txHash, "Polygon Amoy", "CONFIRMED");
+
+    return Map.of(
+        "certificateId", certificateId,
+        "documentHash", documentHash,
+        "blockchainTransaction", txHash,
+        "qrCode", qrCode,
+        "status", "ISSUED");
+  }
+
+  @GetMapping("/certificates")
+  public Object list() {
+    return db.queryForList(
+        "SELECT certificate_id,recipient_name,course,institution,issue_date,status,document_hash,blockchain_reference,qr_code FROM certificates ORDER BY created_at DESC");
+  }
+
+  @GetMapping("/verify/{certificateId}")
+  public Map<String, Object> verify(@PathVariable String certificateId,
+      @RequestParam(required = false) String hash) {
+    return verifyRegisteredCertificate(certificateId, hash, null);
+  }
+
+  /**
+   * Main public verification endpoint: the user uploads the certificate image.
+   * OCR identifies the certificate ID, AI gives an advisory visual assessment,
+   * and the uploaded file is cryptographically checked against the blockchain.
+   */
+  @PostMapping(value = "/verify/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Map<String, Object> verifyUpload(@RequestPart MultipartFile file) throws Exception {
+    validateImage(file);
+
+    Map<?, ?> aiResult = ai.analyze(file.getBytes(),
+        file.getOriginalFilename() == null ? "certificate" : file.getOriginalFilename());
+
+    Object extracted = aiResult.get("extracted_fields");
+    String certificateId = null;
+    if (extracted instanceof Map<?, ?> fields && fields.get("certificate_id") != null) {
+      certificateId = String.valueOf(fields.get("certificate_id")).trim();
+    }
+
+    if (certificateId == null || certificateId.isBlank()) {
+      return Map.of(
+          "result", "UNVERIFIED",
+          "reason", "OCR could not identify a certificate ID. Please upload a clear certificate image.",
+          "aiPrediction", String.valueOf(aiResult.getOrDefault("classification", "SUSPICIOUS")),
+          "aiConfidence", aiResult.getOrDefault("confidence", 0.0),
+          "extractedFields", extracted == null ? Map.of() : extracted);
+    }
+
+    String uploadedHash = sha256(file.getBytes());
+    return verifyRegisteredCertificate(certificateId, uploadedHash, aiResult);
+  }
+
+  private Map<String, Object> verifyRegisteredCertificate(String certificateId, String hash, Map<?, ?> aiResult) {
+    var rows = db.queryForList(
+        "SELECT certificate_id,recipient_name,course,institution,issue_date,status,document_hash,blockchain_reference,qr_code FROM certificates WHERE certificate_id=?",
+        certificateId);
+
+    if (rows.isEmpty()) {
+      recordVerification(certificateId, hash, "INVALID", "Certificate ID not found");
+      return withAi(
+          Map.of("result", "INVALID", "certificateId", certificateId,
+              "reason", "Certificate ID was extracted, but it is not registered in the system."), aiResult);
+    }
+
+    var certificate = rows.get(0);
+    boolean hashMatch = hash == null || hash.equalsIgnoreCase(String.valueOf(certificate.get("document_hash")));
+    boolean blockchainMatch = false;
+    String blockchainReason;
+
+    try {
+      blockchainMatch = blockchain.verify(sha256(certificateId), String.valueOf(certificate.get("document_hash")));
+      blockchainReason = blockchainMatch ? "Blockchain hash matched" : "Blockchain hash did not match";
+    } catch (Exception e) {
+      blockchainReason = "Blockchain unavailable or not configured";
+    }
+
+    String aiPrediction = aiResult == null ? "NOT_RUN" : String.valueOf(aiResult.getOrDefault("classification", "SUSPICIOUS"));
+    String result;
+    String reason;
+
+    if (!hashMatch) {
+      result = "INVALID";
+      reason = "Uploaded certificate hash does not match the registered certificate. Possible tampering detected.";
+    } else if (!blockchainMatch) {
+      result = "INVALID";
+      reason = "The certificate is registered locally, but its blockchain record could not be matched.";
+    } else if ("SUSPICIOUS".equalsIgnoreCase(aiPrediction)) {
+      result = "WARNING";
+      reason = "Blockchain integrity matched, but AI detected possible visual or OCR anomalies. Manual review is recommended.";
+    } else {
+      result = "VERIFIED";
+      reason = "AI assessment, SHA-256 fingerprint, and blockchain record passed verification.";
+    }
+
+    recordVerification(certificateId, hash, result, reason + "; " + blockchainReason);
+
+    Map<String, Object> response = new java.util.HashMap<>();
+    response.put("result", result);
+    response.put("certificateId", certificateId);
+    response.put("hashMatch", hashMatch);
+    response.put("blockchainMatch", blockchainMatch);
+    response.put("reason", reason);
+    response.put("certificate", certificate);
+    return withAi(response, aiResult);
+  }
+
+  private Map<String, Object> withAi(Map<String, Object> response, Map<?, ?> aiResult) {
+    if (aiResult != null) {
+      response.put("aiPrediction", aiResult.get("classification"));
+      response.put("aiConfidence", aiResult.get("confidence"));
+      response.put("extractedFields", aiResult.get("extracted_fields"));
+      response.put("aiIssues", aiResult.get("issues"));
+      response.put("aiRecommendation", aiResult.get("recommendation"));
+    }
+    return response;
+  }
+
+  private void recordVerification(String certificateId, String hash, String result, String reason) {
+    db.update(
+        "INSERT INTO verification_records(certificate_id,supplied_hash,result,reason) VALUES(?,?,?,?)",
+        certificateId, hash, result, reason);
+  }
+
+  private void validateImage(MultipartFile file) {
+    if (file.isEmpty()) {
+      throw new IllegalArgumentException("Certificate image is required");
+    }
+    if (file.getSize() > 10_000_000) {
+      throw new IllegalArgumentException("File must be 10 MB or smaller");
+    }
+    String type = file.getContentType();
+    if (!("image/png".equals(type) || "image/jpeg".equals(type))) {
+      throw new IllegalArgumentException("Please upload a PNG or JPEG certificate image");
+    }
+  }
+
+  private String sha256(byte[] data) throws RuntimeException {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+    } catch (Exception e) {
+      throw new RuntimeException("Unable to calculate SHA-256 hash", e);
+    }
+  }
 }
