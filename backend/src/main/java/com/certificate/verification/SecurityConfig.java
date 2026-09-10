@@ -16,9 +16,16 @@ public class SecurityConfig {
   private final JwtFilter jwtFilter;
   public SecurityConfig(JwtFilter jwtFilter) { this.jwtFilter = jwtFilter; }
   @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+
   @Bean SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http.csrf(csrf -> csrf.disable()).cors(cors -> {}).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-      .authorizeHttpRequests(auth -> auth.requestMatchers("/api/auth/**", "/api/verify/**", "/api/health").permitAll().anyRequest().authenticated())
+    http.csrf(csrf -> csrf.disable())
+      .cors(cors -> {})
+      .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+      .authorizeHttpRequests(auth -> auth
+        .requestMatchers("/api/auth/**", "/api/verify/**", "/api/health").permitAll()
+        .requestMatchers("POST", "/api/certificates").hasAnyRole("ISSUER", "ADMIN")
+        .requestMatchers("GET", "/api/certificates").hasAnyRole("ISSUER", "ADMIN")
+        .anyRequest().authenticated())
       .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
     return http.build();
   }
