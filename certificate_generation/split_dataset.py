@@ -1,7 +1,8 @@
 """Split genuine/tampered data into train/validation/test without source leakage.
 
-Tampered files are grouped with their source certificate ID so variants of the
-same original certificate never appear in different splits.
+All variants belonging to the same source certificate ID are assigned to one
+split, so a genuine certificate and its tampered variants cannot leak across
+train/validation/test.
 """
 
 from pathlib import Path
@@ -18,27 +19,26 @@ def source_id(path: Path) -> str:
     return path.stem.split("__", 1)[0]
 
 
-def split_grouped(files: list[Path], rng: random.Random, train_ratio: float, val_ratio: float):
-    groups: dict[str, list[Path]] = {}
-    for path in files:
-        groups.setdefault(source_id(path), []).append(path)
-    keys = list(groups)
-    rng.shuffle(keys)
-    n = len(keys)
-    train_end = int(n * train_ratio)
-    val_end = train_end + int(n * val_ratio)
-    return (
-        [p for k in keys[:train_end] for p in groups[k]],
-        [p for k in keys[train_end:val_end] for p in groups[k]],
-        [p for k in keys[val_end:] for p in groups[k]],
-    )
+def assign_groups(source_ids: list[str], rng: random.Random):
+    ids = list(source_ids)
+    rng.shuffle(ids)
+    n = len(ids)
+    train_end = int(n * 0.70)
+    val_end = train_end + int(n * 0.15)
+    return {
+        "train": set(ids[:train_end]),
+        "validation": set(ids[train_end:val_end]),
+        "test": set(ids[val_end:]),
+    }
 
 
-def copy_files(files: list[Path], split: str, label: str):
-    target = SPLIT / split / label
-    target.mkdir(parents=True, exist_ok=True)
-    for path in files:
-        shutil.copy2(path, target / path.name)
+def copy_by_assignment(files: list[Path], assignments: dict[str, set[str]], label: str):
+    for split, ids in assignments.items():
+        target = SPLIT / split / label
+        target.mkdir(parents=True, exist_ok=True)
+        for path in files:
+            if source_id(path) in ids:
+                shutil.copy2(path, target / path.name)
 
 
 def main(seed: int = 42):
@@ -49,21 +49,20 @@ def main(seed: int = 42):
 
     if SPLIT.exists():
         shutil.rmtree(SPLIT)
-    rng = random.Random(seed)
 
-    real_train, real_val, real_test = split_grouped(real, rng, 0.70, 0.15)
-    tam_train, tam_val, tam_test = split_grouped(tampered, rng, 0.70, 0.15)
+    real_ids = {source_id(p) for p in real}
+    tampered_ids = {source_id(p) for p in tampered}
+    source_ids = sorted(real_ids | tampered_ids)
+    assignments = assign_groups(source_ids, random.Random(seed))
 
-    copy_files(real_train, "train", "real")
-    copy_files(real_val, "validation", "real")
-    copy_files(real_test, "test", "real")
-    copy_files(tam_train, "train", "tampered")
-    copy_files(tam_val, "validation", "tampered")
-    copy_files(tam_test, "test", "tampered")
+    copy_by_assignment(real, assignments, "real")
+    copy_by_assignment(tampered, assignments, "tampered")
 
-    print("Dataset split complete:")
-    for split, a, b in [("train", real_train, tam_train), ("validation", real_val, tam_val), ("test", real_test, tam_test)]:
-        print(f"  {split}: real={len(a)}, tampered={len(b)}")
+    print("Dataset split complete (grouped by source certificate):")
+    for split in ("train", "validation", "test"):
+        real_count = sum(source_id(p) in assignments[split] for p in real)
+        tampered_count = sum(source_id(p) in assignments[split] for p in tampered)
+        print(f"  {split}: real={real_count}, tampered={tampered_count}, sources={len(assignments[split])}")
 
 
 if __name__ == "__main__":
