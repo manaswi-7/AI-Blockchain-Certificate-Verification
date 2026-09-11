@@ -66,32 +66,39 @@ public class CertificateController {
   }
 
   @PostMapping(value = "/verify/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public Map<String, Object> verifyUpload(@RequestPart MultipartFile file) throws Exception {
+  public Map<String, Object> verifyUpload(
+      @RequestPart MultipartFile file,
+      @RequestParam(required = false) String certificateId) throws Exception {
     validateImage(file);
-    Map<?, ?> aiResult;
+    Map<?, ?> aiResult = null;
+    String extractedCertificateId = null;
+
     try {
       aiResult = ai.analyze(file.getBytes(), file.getOriginalFilename() == null ? "certificate" : file.getOriginalFilename());
-    } catch (Exception e) {
-      Map<String, Object> response = new HashMap<>();
-      response.put("result", "UNVERIFIED");
-      response.put("reason", "AI/OCR service is unavailable. The certificate cannot be fully verified right now.");
-      response.put("aiPrediction", "UNAVAILABLE");
-      response.put("aiServiceAvailable", false);
-      return response;
+      Object extracted = aiResult.get("extracted_fields");
+      if (extracted instanceof Map<?, ?> fields && fields.get("certificate_id") != null) {
+        extractedCertificateId = String.valueOf(fields.get("certificate_id")).trim();
+      }
+    } catch (Exception ignored) {
+      // AI/OCR is advisory. Continue with cryptographic/blockchain verification when
+      // the verifier supplies the certificate ID explicitly.
     }
 
-    Object extracted = aiResult.get("extracted_fields");
-    String certificateId = null;
-    if (extracted instanceof Map<?, ?> fields && fields.get("certificate_id") != null) {
-      certificateId = String.valueOf(fields.get("certificate_id")).trim();
+    String id = extractedCertificateId;
+    if ((id == null || id.isBlank()) && certificateId != null && !certificateId.isBlank()) {
+      id = certificateId.trim();
     }
-    if (certificateId == null || certificateId.isBlank()) {
+
+    if (id == null || id.isBlank()) {
       Map<String, Object> response = new HashMap<>();
       response.put("result", "UNVERIFIED");
-      response.put("reason", "OCR could not identify a certificate ID. Please upload a clear certificate image.");
+      response.put("reason", "OCR could not identify a certificate ID. Enter the certificate ID and try again, or upload a clear certificate image.");
+      response.put("aiPrediction", aiResult == null ? "UNAVAILABLE" : valueOrDefault(aiResult, "classification", "UNAVAILABLE"));
+      response.put("aiServiceAvailable", aiResult != null);
       return withAi(response, aiResult);
     }
-    return verifyRegisteredCertificate(certificateId, sha256(file.getBytes()), aiResult);
+
+    return verifyRegisteredCertificate(id, sha256(file.getBytes()), aiResult);
   }
 
   private Map<String, Object> verifyRegisteredCertificate(String certificateId, String hash, Map<?, ?> aiResult) {
@@ -118,7 +125,7 @@ public class CertificateController {
       blockchainReason = "Blockchain unavailable or not configured";
     }
 
-    String aiPrediction = aiResult == null ? "NOT_RUN" : String.valueOf(valueOrDefault(aiResult, "classification", "UNAVAILABLE"));
+    String aiPrediction = aiResult == null ? "UNAVAILABLE" : String.valueOf(valueOrDefault(aiResult, "classification", "UNAVAILABLE"));
     boolean aiAvailable = aiResult != null && !"UNAVAILABLE".equalsIgnoreCase(aiPrediction);
     String result;
     String reason;
