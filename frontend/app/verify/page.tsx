@@ -18,6 +18,7 @@ function resultLabel(result?: string) {
 
 export default function VerifyPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [certificateId, setCertificateId] = useState("");
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,7 +36,9 @@ export default function VerifyPage() {
 
     setMessage("Running OCR → AI → SHA-256 → Blockchain verification…");
     try {
-      const body = new FormData(); body.append("file", file);
+      const body = new FormData();
+      body.append("file", file);
+      if (certificateId.trim()) body.append("certificateId", certificateId.trim());
       const response = await fetch(`${API}/verify/upload`, { method: "POST", body });
       const data = await response.json().catch(() => ({})); setResult(data);
       setMessage(response.ok ? "Verification completed." : data.message || data.error || "Verification failed.");
@@ -49,9 +52,10 @@ export default function VerifyPage() {
       <section style={{ maxWidth: 850, margin: "50px auto", padding: "0 24px" }}>
         <p className="eyebrow">CERTIFICATE VERIFICATION</p>
         <h1>Upload a certificate to verify it</h1>
-        <p className="lead">No certificate ID is required. Upload the certificate image and the system will use OCR to find the ID, AI to assess possible tampering, and blockchain to verify its registered hash.</p>
+        <p className="lead">Upload the certificate image. OCR will try to find the certificate ID automatically. If OCR cannot read it, you can enter the ID manually to continue SHA-256 and blockchain verification.</p>
         <form onSubmit={submit} className="verify" style={{ marginTop: 28, display: "grid", gap: 16 }}>
           <label style={{ display: "grid", gap: 8 }}><strong>Certificate image</strong><input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); }} /></label>
+          <label style={{ display: "grid", gap: 8 }}><strong>Certificate ID <span style={{ fontWeight: 400 }}>(optional)</span></strong><input value={certificateId} onChange={(e) => setCertificateId(e.target.value)} placeholder="Enter ID if OCR cannot read it" /></label>
           <button disabled={!file || loading}>{loading ? "Verifying…" : "Verify certificate"}</button>
         </form>
         {file && <p>Selected file: <b>{file.name}</b></p>}
