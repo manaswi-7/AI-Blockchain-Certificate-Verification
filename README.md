@@ -84,7 +84,50 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-For a deployed frontend, set the Vercel environment variable `NEXT_PUBLIC_API_URL` to the public Spring Boot API base URL ending in `/api`, for example `https://your-backend.example.com/api`. Do not use `localhost` in a production deployment.
+## Free deployment architecture
+
+The production frontend is hosted on Vercel. The Spring Boot API can be deployed as a Docker web service on a free-tier host such as Koyeb when the account/service is eligible for the provider's free allowance. The AI service can be deployed separately because it has different CPU/memory requirements. PostgreSQL uses Supabase's free database tier, and blockchain anchoring uses Polygon Amoy testnet.
+
+This repository does not depend on Render. The old Render deployment configuration was removed.
+
+For the Vercel frontend, set:
+
+```text
+NEXT_PUBLIC_API_URL=https://YOUR-BACKEND-URL/api
+```
+
+Do not use `localhost` in production.
+
+The backend should set:
+
+- `DB_URL`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `JWT_SECRET`
+- `SETUP_KEY`
+- `AI_SERVICE_URL`
+- `VERIFICATION_URL`
+- `FRONTEND_URL`
+- `BLOCKCHAIN_RPC_URL`
+- `BLOCKCHAIN_PRIVATE_KEY`
+- `BLOCKCHAIN_CONTRACT_ADDRESS`
+- `BLOCKCHAIN_CHAIN_ID=80002`
+
+Never commit passwords, JWT secrets, wallet private keys, or RPC credentials.
+
+## Verification behavior
+
+The verifier can upload a certificate image without entering an ID. OCR attempts to extract the certificate ID. If OCR/AI is unavailable, the verifier can optionally provide the certificate ID to continue cryptographic and blockchain verification.
+
+Possible results:
+
+- `VERIFIED` — hash and blockchain match and AI analysis is available and does not flag tampering.
+- `VERIFIED_WITHOUT_AI` — hash and blockchain match but AI analysis is unavailable.
+- `WARNING` — blockchain/hash match but AI flags possible visual tampering.
+- `INVALID` — certificate is not registered, the uploaded file hash differs, or the blockchain record does not match.
+- `UNVERIFIED` — required information or an external verification service is unavailable.
+
+AI is advisory and never replaces cryptographic or blockchain verification.
 
 ## Create an issuer for local testing
 
@@ -114,33 +157,6 @@ For anything beyond local development, set a strong `SETUP_KEY` and keep it out 
 9. A changed file produces a hash mismatch and should be reported as `INVALID`.
 10. An unknown Certificate ID produces `INVALID` or `UNVERIFIED` depending on the service state.
 
-## Important
-
-The AI service is advisory and never replaces cryptographic or blockchain verification. The AI service provides OCR/field analysis and uses a trained tamper model only when the model file is actually available. Blockchain and file hashing remain the source of truth for cryptographic authenticity.
-
-## Production deployment
-
-The repository includes `render.yaml` for a Spring Boot API and AI service. The API also exposes `/api/health` for deployment health checks.
-
-The frontend can be deployed on Vercel. After the backend is deployed, configure `NEXT_PUBLIC_API_URL` in the Vercel project and redeploy. The backend must allow the exact Vercel origin through `FRONTEND_URL`.
-
-Required production backend variables include:
-
-- `DB_URL`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `JWT_SECRET`
-- `SETUP_KEY`
-- `AI_SERVICE_URL`
-- `VERIFICATION_URL`
-- `FRONTEND_URL`
-- `BLOCKCHAIN_RPC_URL`
-- `BLOCKCHAIN_PRIVATE_KEY`
-- `BLOCKCHAIN_CONTRACT_ADDRESS`
-- `BLOCKCHAIN_CHAIN_ID`
-
-Never commit passwords, JWT secrets, wallet private keys, or RPC credentials.
-
 ## Structure
 
 ```text
@@ -149,4 +165,5 @@ backend/      Spring Boot + Java + Spring Security
 ai-service/   FastAPI + OCR/analysis service
 blockchain/   Solidity + Hardhat
 database/     PostgreSQL schema
+docs/         deployment and project documentation
 ```
