@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const configuredApi = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+const API = configuredApi || (process.env.NODE_ENV === "development" ? "http://localhost:8080/api" : "");
 
 export default function Dashboard() {
   const [rows, setRows] = useState<any[]>([]);
@@ -19,15 +20,21 @@ export default function Dashboard() {
 
   async function load() {
     const token = localStorage.getItem("token");
-    if (!token) return;
-    const r = await fetch(`${API}/certificates`, { headers: { Authorization: `Bearer ${token}` } });
-    if (r.ok) setRows(await r.json());
+    if (!token || !API) return;
+    try {
+      const r = await fetch(`${API}/certificates`, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) setRows(await r.json());
+    } catch { setMsg("Backend is unavailable. Check the deployment API configuration."); }
   }
 
   useEffect(() => { load(); }, []);
 
   async function issue(e: FormEvent) {
     e.preventDefault();
+    if (!API) {
+      setMsg("Backend is not configured for this deployment.");
+      return;
+    }
     if (!file) {
       setMsg("Please select the genuine certificate image to register.");
       return;
@@ -35,6 +42,10 @@ export default function Dashboard() {
     setMsg("Registering: SHA-256 → blockchain → QR…");
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        location.href = "/login";
+        return;
+      }
       const body = new FormData();
       Object.entries(form).forEach(([k, v]) => body.append(k, v));
       body.append("file", file);
