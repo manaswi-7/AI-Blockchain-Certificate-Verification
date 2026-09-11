@@ -26,9 +26,6 @@ public class CertificateController {
     this.ai = ai;
   }
 
-  @GetMapping("/health")
-  public Map<String, String> health() { return Map.of("status", "ok"); }
-
   @PostMapping(value = "/certificates", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> issue(
       @RequestParam String certificateId,
