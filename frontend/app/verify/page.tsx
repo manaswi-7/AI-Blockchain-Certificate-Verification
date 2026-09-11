@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const configuredApi = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+const API = configuredApi || (process.env.NODE_ENV === "development" ? "http://localhost:8080/api" : "");
 
 function resultLabel(result?: string) {
   switch (result) {
@@ -24,11 +25,19 @@ export default function VerifyPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
-    setLoading(true); setResult(null); setMessage("Running OCR → AI → SHA-256 → Blockchain verification…");
+    setLoading(true); setResult(null);
+
+    if (!API) {
+      setMessage("Verification backend is not configured for this deployment.");
+      setLoading(false);
+      return;
+    }
+
+    setMessage("Running OCR → AI → SHA-256 → Blockchain verification…");
     try {
       const body = new FormData(); body.append("file", file);
       const response = await fetch(`${API}/verify/upload`, { method: "POST", body });
-      const data = await response.json(); setResult(data);
+      const data = await response.json().catch(() => ({})); setResult(data);
       setMessage(response.ok ? "Verification completed." : data.message || data.error || "Verification failed.");
     } catch { setMessage("Verification service is unavailable. Please try again later."); }
     finally { setLoading(false); }
