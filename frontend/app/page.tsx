@@ -30,6 +30,7 @@ function resultLabel(result?: string) {
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
+  const [certificateId, setCertificateId] = useState("");
   const [result, setResult] = useState<Verification | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -47,7 +48,9 @@ export default function Home() {
 
     setMessage("Analyzing certificate: OCR → AI → SHA-256 → Blockchain…");
     try {
-      const body = new FormData(); body.append("file", file);
+      const body = new FormData();
+      body.append("file", file);
+      if (certificateId.trim()) body.append("certificateId", certificateId.trim());
       const response = await fetch(`${API}/verify/upload`, { method: "POST", body });
       const data = await response.json().catch(() => ({}));
       setResult(data);
@@ -67,6 +70,7 @@ export default function Home() {
           <p className="lead">Upload the certificate image. The system extracts certificate information with OCR, checks for suspicious visual changes using AI, generates a SHA-256 fingerprint, and compares it with the immutable blockchain record.</p>
           <form onSubmit={verify} className="verify" style={{ display: "grid", gap: 14 }}>
             <label style={{ display: "grid", gap: 8 }}><strong>Upload certificate</strong><input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setMessage(""); }} /></label>
+            <label style={{ display: "grid", gap: 8 }}><strong>Certificate ID <span style={{ fontWeight: 400 }}>(optional)</span></strong><input value={certificateId} onChange={(e) => setCertificateId(e.target.value)} placeholder="Enter ID if OCR cannot read it" /></label>
             <button disabled={!file || loading}>{loading ? "Verifying…" : "Verify certificate"}</button>
           </form>
           {file && <p style={{ marginTop: 12 }}>Selected: <b>{file.name}</b></p>}
