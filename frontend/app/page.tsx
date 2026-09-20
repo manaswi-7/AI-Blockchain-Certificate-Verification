@@ -25,6 +25,7 @@ function resultLabel(result?: string) {
     case "WARNING": return "Warning — manual review recommended";
     case "INVALID": return "Invalid";
     case "UNVERIFIED": return "Unverified";
+    case "PROCESSED": return "Processed — blockchain not configured";
     default: return result || "Verification result";
   }
 }
@@ -90,7 +91,7 @@ export default function Home() {
               <strong>{resultLabel(result.result)}</strong>
               {result.certificateId && <p>Certificate ID: <b>{result.certificateId}</b></p>}
               {result.aiPrediction && <p>AI analysis: <b>{result.aiPrediction}</b>{typeof result.aiConfidence === "number" && ` (${Math.round(result.aiConfidence * 100)}%)`}</p>}{result.aiRecommendation && <p>{result.aiRecommendation}</p>}
-              {result.blockchainAvailable === false ? <p>SHA-256: <b>CALCULATED ✓</b></p> : typeof result.hashMatch === "boolean" && <p>SHA-256: <b>{result.hashMatch ? "MATCHED ✓" : "MISMATCH ✗"}</b></p>}
+              <p>SHA-256: <b>{result.documentHash ? "CALCULATED ✓" : "NOT CALCULATED"}</b></p>
               <p>Blockchain: <b>{result.blockchainAvailable === false ? "NOT CHECKED" : result.blockchainMatch ? "MATCHED ✓" : "NOT MATCHED ✗"}</b></p>
               {result.result === "VERIFIED_WITHOUT_AI" && <p><b>Note:</b> AI visual analysis was not available for this verification.</p>}
               <p>{result.reason}</p>
