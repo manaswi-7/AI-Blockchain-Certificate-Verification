@@ -15,7 +15,7 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -32,7 +32,7 @@ jobs:
         working-directory: ai-service
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -54,7 +54,7 @@ jobs:
         working-directory: frontend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -72,7 +72,7 @@ jobs:
         working-directory: blockchain
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -92,7 +92,7 @@ jobs:
         working-directory: certificate_generation
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
