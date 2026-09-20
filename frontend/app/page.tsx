@@ -49,7 +49,9 @@ export default function Home() {
     try {
       const body = new FormData();
       body.append("file", file);
-      if (certificateId.trim()) body.append("certificateId", certificateId.trim());
+      const detectedId = detectCertificateId(file.name);
+      const idToSend = certificateId.trim() || detectedId;
+      if (idToSend) body.append("certificateId", idToSend);
       const response = await fetch(`${API}/verify/upload`, { method: "POST", body });
       const data = await response.json().catch(() => ({}));
       setResult(data);
