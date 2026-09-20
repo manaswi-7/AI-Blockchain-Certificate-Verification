@@ -90,16 +90,28 @@ The production frontend is hosted on Vercel. The Spring Boot API can be deployed
 
 This repository does not depend on Render. The old Render deployment configuration was removed.
 
-For the Vercel frontend, set:
+For the Vercel frontend, set this environment variable in Vercel **Production** settings after the Spring Boot API is deployed:
 
 ```text
 NEXT_PUBLIC_API_URL=https://YOUR-BACKEND-URL/api
 ```
 
+The current frontend is:
+`https://ai-blockchain-certificate-verificat.vercel.app`
+
+The backend CORS setting must allow that exact origin:
+
+```text
+FRONTEND_URL=https://ai-blockchain-certificate-verificat.vercel.app
+```
+
+Do not put database passwords, JWT secrets, blockchain private keys, or other secrets in the frontend or GitHub.
+
 Do not use `localhost` in production.
 
 The backend should set:
 
+- `FRONTEND_URL=https://ai-blockchain-certificate-verificat.vercel.app`
 - `DB_URL`
 - `DB_USERNAME`
 - `DB_PASSWORD`
