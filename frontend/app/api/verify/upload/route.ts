@@ -97,6 +97,7 @@ export async function POST(request: Request) {
     const filenameId =
       filename.match(/CERT\d{6,}/i)?.[0]?.toUpperCase() || "";
     const certificateId = suppliedId || filenameId;
+    const aiServiceUrl = (process.env.AI_SERVICE_URL || "").replace(/\/$/, "");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -141,13 +142,44 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const documentHash = await sha256Hex(bytes);
 
+    let aiPrediction = "UNAVAILABLE";
+    let aiConfidence: number | undefined;
+    let aiModelAvailable = false;
+    let ocrFields: Record<string, unknown> | undefined;
+    let aiRecommendation: string | undefined;
+
+    if (aiServiceUrl) {
+      try {
+        const aiForm = new FormData();
+        aiForm.append("file", new Blob([bytes], { type: file.type }), file.name);
+        const aiResponse = await fetch(aiServiceUrl + "/analyze", {
+          method: "POST",
+          body: aiForm,
+          signal: AbortSignal.timeout(45_000),
+        });
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          aiPrediction = aiData.classification || "UNAVAILABLE";
+          aiConfidence = typeof aiData.confidence === "number" ? aiData.confidence : undefined;
+          aiModelAvailable = Boolean(aiData.model_available);
+          ocrFields = aiData.extracted_fields;
+          aiRecommendation = aiData.recommendation;
+        }
+      } catch (aiError) {
+        console.error("AI service unavailable", aiError);
+      }
+    }
+
     if (!certificateId) {
       return NextResponse.json({
         result: "UNVERIFIED",
         reason:
           "Certificate ID is required for blockchain verification. Enter the Certificate ID or use a filename such as CERT2025000003.png.",
-        aiPrediction: "UNAVAILABLE",
-        aiModelAvailable: false,
+        aiPrediction,
+        aiConfidence,
+        aiModelAvailable,
+        ocrFields,
+        aiRecommendation,
         hash: documentHash,
         hashMatch: undefined,
         blockchainMatch: undefined,
@@ -161,8 +193,11 @@ export async function POST(request: Request) {
       return NextResponse.json({
         result: "UNVERIFIED",
         certificateId,
-        aiPrediction: "UNAVAILABLE",
-        aiModelAvailable: false,
+        aiPrediction,
+        aiConfidence,
+        aiModelAvailable,
+        ocrFields,
+        aiRecommendation,
         hashMatch: undefined,
         blockchainMatch: undefined,
         blockchainAvailable: false,
@@ -195,8 +230,11 @@ export async function POST(request: Request) {
       hashMatch: blockchainMatch,
       blockchainMatch,
       blockchainAvailable: true,
-      aiPrediction: "UNAVAILABLE",
-      aiModelAvailable: false,
+      aiPrediction,
+      aiConfidence,
+      aiModelAvailable,
+      ocrFields,
+      aiRecommendation,
       documentHash,
       reason: blockchainMatch
         ? "The uploaded file's SHA-256 fingerprint matches the certificate record anchored on Polygon Amoy. AI visual analysis is not running in this Vercel-only deployment."
@@ -210,8 +248,11 @@ export async function POST(request: Request) {
         result: "UNVERIFIED",
         reason:
           "The blockchain verification request failed. Check that BLOCKCHAIN_RPC_URL points to Polygon Amoy and BLOCKCHAIN_CONTRACT_ADDRESS is the deployed CertificateRegistry contract.",
-        aiPrediction: "UNAVAILABLE",
-        aiModelAvailable: false,
+        aiPrediction,
+        aiConfidence,
+        aiModelAvailable,
+        ocrFields,
+        aiRecommendation,
         blockchainAvailable: false,
       },
       { status: 502 },
