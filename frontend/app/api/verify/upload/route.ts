@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const file = form.get("file");
     const suppliedId = String(form.get("certificateId") || "").trim();
     const filename = file instanceof File ? file.name : "";
-    const filenameId = filename.match(/CERT\\d{6,}/i)?.[0]?.toUpperCase() || "";
+    const filenameId = filename.match(/CERT\d{6,}/i)?.[0]?.toUpperCase() || "";
     const certificateId = suppliedId || filenameId;
 
     if (!(file instanceof File)) {
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       result: blockchainMatch ? "VERIFIED_WITHOUT_AI" : "INVALID",
-      certificateId: suppliedId,
+      certificateId,
       hashMatch: blockchainMatch,
       blockchainMatch,
       blockchainAvailable: true,
