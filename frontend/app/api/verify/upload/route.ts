@@ -11,23 +11,72 @@ const CONTRACT_ABI = [
     name: "verifyCertificate",
     stateMutability: "view",
     inputs: [
-      { name: "certificateIdHash", type: "bytes32" },
+      { name: "certificateId", type: "bytes32" },
       { name: "documentHash", type: "bytes32" },
     ],
     outputs: [{ name: "", type: "bool" }],
   },
+  {
+    type: "function",
+    name: "getCertificate",
+    stateMutability: "view",
+    inputs: [{ name: "certificateId", type: "bytes32" }],
+    outputs: [
+      { name: "documentHash", type: "bytes32" },
+      { name: "timestamp", type: "uint256" },
+      { name: "issuer", type: "address" },
+      { name: "exists", type: "bool" },
+    ],
+  },
 ] as const;
 
 function sha256Hex(data: ArrayBuffer | string) {
-  return crypto.subtle.digest("SHA-256", typeof data === "string" ? new TextEncoder().encode(data) : data)
-    .then((hash) => Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join(""));
+  return crypto.subtle
+    .digest(
+      "SHA-256",
+      typeof data === "string" ? new TextEncoder().encode(data) : data,
+    )
+    .then((hash) =>
+      Array.from(new Uint8Array(hash), (b) =>
+        b.toString(16).padStart(2, "0"),
+      ).join(""),
+    );
+}
+
+function isAddress(value: string | undefined): value is `0x${string}` {
+  return !!value && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function getConfig() {
+  const rpcUrl =
+    process.env.BLOCKCHAIN_RPC_URL ||
+    process.env.POLYGON_AMOY_RPC_URL ||
+    "";
+  const contractAddress = process.env.BLOCKCHAIN_CONTRACT_ADDRESS || "";
+
+  return {
+    rpcUrl,
+    contractAddress: isAddress(contractAddress) ? contractAddress : "",
+    configured: Boolean(rpcUrl) && isAddress(contractAddress),
+  };
 }
 
 export async function GET() {
+  const config = getConfig();
+
   return NextResponse.json({
     status: "UP",
     service: "certificate-verification-api",
     mode: "vercel-native",
+    blockchain: {
+      network: "Polygon Amoy",
+      chainId: 80002,
+      configured: config.configured,
+    },
+    ai: {
+      available: false,
+      note: "AI service is not bundled into this Vercel route.",
+    },
   });
 }
 
@@ -37,23 +86,48 @@ export async function POST(request: Request) {
     const file = form.get("file");
     const suppliedId = String(form.get("certificateId") || "").trim();
     const filename = file instanceof File ? file.name : "";
-    const filenameId = filename.match(/CERT\d{6,}/i)?.[0]?.toUpperCase() || "";
+    const filenameId =
+      filename.match(/CERT\d{6,}/i)?.[0]?.toUpperCase() || "";
     const certificateId = suppliedId || filenameId;
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ result: "UNVERIFIED", reason: "Certificate image is required." }, { status: 400 });
+      return NextResponse.json(
+        {
+          result: "UNVERIFIED",
+          reason: "Certificate image is required.",
+        },
+        { status: 400 },
+      );
     }
 
     if (file.size === 0) {
-      return NextResponse.json({ result: "UNVERIFIED", reason: "The uploaded certificate is empty." }, { status: 400 });
+      return NextResponse.json(
+        {
+          result: "UNVERIFIED",
+          reason: "The uploaded certificate is empty.",
+        },
+        { status: 400 },
+      );
     }
 
     if (file.size > 10_000_000) {
-      return NextResponse.json({ result: "UNVERIFIED", reason: "File must be 10 MB or smaller." }, { status: 413 });
+      return NextResponse.json(
+        {
+          result: "UNVERIFIED",
+          reason: "File must be 10 MB or smaller.",
+        },
+        { status: 413 },
+      );
     }
 
     if (!["image/png", "image/jpeg"].includes(file.type)) {
-      return NextResponse.json({ result: "UNVERIFIED", reason: "Please upload a PNG or JPEG certificate image." }, { status: 400 });
+      return NextResponse.json(
+        {
+          result: "UNVERIFIED",
+          reason: "Please upload a PNG or JPEG certificate image.",
+        },
+        { status: 400 },
+      );
     }
 
     const bytes = await file.arrayBuffer();
@@ -62,41 +136,49 @@ export async function POST(request: Request) {
     if (!certificateId) {
       return NextResponse.json({
         result: "UNVERIFIED",
-        reason: "The Vercel-native verifier needs the Certificate ID to perform the blockchain lookup. Enter the Certificate ID and try again.",
+        reason:
+          "Certificate ID is required for blockchain verification. Enter the Certificate ID or use a filename such as CERT2025000003.png.",
         aiPrediction: "UNAVAILABLE",
         aiModelAvailable: false,
         hash: documentHash,
+        hashMatch: undefined,
+        blockchainMatch: undefined,
+        blockchainAvailable: false,
+      });
+    }
+
+    const config = getConfig();
+
+    if (!config.rpcUrl || !config.contractAddress) {
+      return NextResponse.json({
+        result: "UNVERIFIED",
+        certificateId,
+        aiPrediction: "UNAVAILABLE",
+        aiModelAvailable: false,
+        hashMatch: undefined,
+        blockchainMatch: undefined,
+        blockchainAvailable: false,
+        documentHash,
+        reason:
+          "The certificate was hashed successfully, but the Polygon Amoy registry is not configured on this Vercel deployment. Set BLOCKCHAIN_RPC_URL and BLOCKCHAIN_CONTRACT_ADDRESS in Vercel, redeploy, then anchor this exact certificate file on the registry.",
       });
     }
 
     const certificateIdHash = await sha256Hex(certificateId);
-    const rpcUrl = process.env.BLOCKCHAIN_RPC_URL;
-    const contractAddress = process.env.BLOCKCHAIN_CONTRACT_ADDRESS as `0x${string}` | undefined;
-
-    if (!rpcUrl || !contractAddress) {
-      return NextResponse.json({
-        result: "UNVERIFIED",
-        certificateId,
-        hashMatch: false,
-        blockchainMatch: false,
-        blockchainAvailable: false,
-        aiPrediction: "UNAVAILABLE",
-        aiModelAvailable: false,
-        reason: "Certificate ID was received and the SHA-256 fingerprint was calculated, but blockchain verification is not configured on this Vercel deployment yet. Add BLOCKCHAIN_RPC_URL and BLOCKCHAIN_CONTRACT_ADDRESS in Vercel.",
-        documentHash,
-      });
-    }
 
     const client = createPublicClient({
       chain: polygonAmoy,
-      transport: http(rpcUrl),
+      transport: http(config.rpcUrl),
     });
 
     const blockchainMatch = await client.readContract({
-      address: contractAddress,
+      address: config.contractAddress,
       abi: CONTRACT_ABI,
       functionName: "verifyCertificate",
-      args: [`0x${certificateIdHash}` as `0x${string}`, `0x${documentHash}` as `0x${string}`],
+      args: [
+        `0x${certificateIdHash}` as `0x${string}`,
+        `0x${documentHash}` as `0x${string}`,
+      ],
     });
 
     return NextResponse.json({
@@ -107,18 +189,24 @@ export async function POST(request: Request) {
       blockchainAvailable: true,
       aiPrediction: "UNAVAILABLE",
       aiModelAvailable: false,
-      reason: blockchainMatch
-        ? "The uploaded file's SHA-256 fingerprint matches the certificate record anchored on Polygon Amoy. AI visual analysis is not running in this Vercel-only deployment yet."
-        : "The uploaded file does not match the blockchain record for this Certificate ID. The document may have been modified.",
       documentHash,
+      reason: blockchainMatch
+        ? "The uploaded file's SHA-256 fingerprint matches the certificate record anchored on Polygon Amoy. AI visual analysis is not running in this Vercel-only deployment."
+        : "The uploaded file does not match the blockchain record for this Certificate ID. Use the original file that was anchored, or re-check the Certificate ID.",
     });
   } catch (error) {
     console.error("verification error", error);
-    return NextResponse.json({
-      result: "UNVERIFIED",
-      reason: "The Vercel verification API could not complete the check. Verify the blockchain configuration and try again.",
-      aiPrediction: "UNAVAILABLE",
-      aiModelAvailable: false,
-    }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        result: "UNVERIFIED",
+        reason:
+          "The blockchain verification request failed. Check that BLOCKCHAIN_RPC_URL points to Polygon Amoy and BLOCKCHAIN_CONTRACT_ADDRESS is the deployed CertificateRegistry contract.",
+        aiPrediction: "UNAVAILABLE",
+        aiModelAvailable: false,
+        blockchainAvailable: false,
+      },
+      { status: 502 },
+    );
   }
 }
