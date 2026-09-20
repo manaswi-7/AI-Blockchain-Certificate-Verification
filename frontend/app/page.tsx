@@ -35,7 +35,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
 
   function detectCertificateId(filename: string) {
-    const match = filename.match(/CERT\\d{6,}/i);
+    const match = filename.match(/CERT[0-9]{6,}/i);
     return match ? match[0].toUpperCase() : "";
   }
 
