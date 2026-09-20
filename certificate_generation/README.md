@@ -1,58 +1,31 @@
-# Certificate AI dataset pipeline
+# Certificate dataset
 
-This folder contains the synthetic-data and model-training pipeline for the certificate tampering component.
+The project uses a reproducible synthetic dataset generator.
 
-## Pipeline
+It creates exactly:
+- 500 genuine certificates
+- 500 tampered copies, one derived from each genuine certificate
+- 500 unique certificate IDs and student records
+- metadata.csv mapping each genuine image to its tampered image and tamper type
 
-```text
-Generate genuine certificates
-        ↓
-Generate tampered variants
-        ↓
-Leakage-safe train/validation/test split
-        ↓
-MobileNetV2 transfer learning
-        ↓
-Evaluate on held-out test data
-        ↓
-Export Keras model + metrics
-```
+Tamper classes include name, date, certificate ID, roll number, marks, grade, signature, QR code, seal, photo, course/subject, and academic year.
 
-## Local setup
+## Generate
 
 ```bash
-cd certificate_generation
-python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
+pip install Pillow qrcode[pil]
+python generate_500_certificate_dataset.py
 ```
 
-For model training, install TensorFlow separately if it is not available in your environment:
+Output:
 
-```bash
-pip install tensorflow
+```
+dataset/certificates/
+  real/       # 500 original images
+  tampered/   # 500 tampered images
+  metadata.csv
 ```
 
-## Generate data
+These are synthetic documents for model development/testing only.
 
-```bash
-python generate_certificates.py --count 200
-python generate_tampered.py
-python split_dataset.py
-```
-
-The split script keeps all variants of the same source certificate in one split to reduce data leakage.
-
-## Train
-
-```bash
-python train_tamper_model.py
-```
-
-Outputs:
-
-- `models/certificate_tamper_model.keras`
-- `models/test_metrics.json`
-
-Do not report accuracy/precision/recall until the model has actually been trained and evaluated. The current AI service remains advisory until this trained model is integrated into the FastAPI service.
+The PNG binaries are intentionally generated rather than committed to Git history; this keeps the repository usable while making the dataset exactly reproducible from the committed Python generator.
