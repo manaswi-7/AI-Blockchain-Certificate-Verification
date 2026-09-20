@@ -191,7 +191,7 @@ export async function POST(request: Request) {
 
     if (!config.rpcUrl || !config.contractAddress) {
       return NextResponse.json({
-        result: "UNVERIFIED",
+        result: "PROCESSED",
         certificateId,
         aiPrediction,
         aiConfidence,
@@ -203,7 +203,7 @@ export async function POST(request: Request) {
         blockchainAvailable: false,
         documentHash,
         reason:
-          "The certificate was hashed successfully, but the Polygon Amoy registry is not configured on this Vercel deployment. Set BLOCKCHAIN_RPC_URL and BLOCKCHAIN_CONTRACT_ADDRESS in Vercel, redeploy, then anchor this exact certificate file on the registry.",
+          "Certificate processed successfully. SHA-256 fingerprint calculated. Blockchain verification is not configured yet, so authenticity cannot be confirmed from the registry.",
       });
     }
 
