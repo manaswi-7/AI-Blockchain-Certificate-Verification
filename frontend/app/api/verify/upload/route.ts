@@ -36,6 +36,9 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const suppliedId = String(form.get("certificateId") || "").trim();
+    const filename = file instanceof File ? file.name : "";
+    const filenameId = filename.match(/CERT\\d{6,}/i)?.[0]?.toUpperCase() || "";
+    const certificateId = suppliedId || filenameId;
 
     if (!(file instanceof File)) {
       return NextResponse.json({ result: "UNVERIFIED", reason: "Certificate image is required." }, { status: 400 });
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const documentHash = await sha256Hex(bytes);
 
-    if (!suppliedId) {
+    if (!certificateId) {
       return NextResponse.json({
         result: "UNVERIFIED",
         reason: "The Vercel-native verifier needs the Certificate ID to perform the blockchain lookup. Enter the Certificate ID and try again.",
@@ -66,14 +69,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const certificateIdHash = await sha256Hex(suppliedId);
+    const certificateIdHash = await sha256Hex(certificateId);
     const rpcUrl = process.env.BLOCKCHAIN_RPC_URL;
     const contractAddress = process.env.BLOCKCHAIN_CONTRACT_ADDRESS as `0x${string}` | undefined;
 
     if (!rpcUrl || !contractAddress) {
       return NextResponse.json({
         result: "UNVERIFIED",
-        certificateId: suppliedId,
+        certificateId,
         hashMatch: false,
         blockchainMatch: false,
         blockchainAvailable: false,
