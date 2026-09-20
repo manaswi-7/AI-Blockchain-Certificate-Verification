@@ -39,11 +39,6 @@ export default function Home() {
     if (!file) return;
     setLoading(true); setResult(null);
 
-    if (!API) {
-      setMessage("Verification backend is not configured for this deployment.");
-      setLoading(false);
-      return;
-    }
 
     setMessage("Analyzing certificate: OCR → AI → SHA-256 → Blockchain…");
     try {
