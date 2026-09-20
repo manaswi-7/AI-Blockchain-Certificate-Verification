@@ -30,34 +30,56 @@ jobs:
           node - <<'NODE'
           const { ethers } = require("ethers");
 
-          const rpc = process.env.POLYGON_AMOY_RPC_URL;
-          const key = process.env.DEPLOYER_PRIVATE_KEY;
+          async function main() {
+            const rpc = process.env.POLYGON_AMOY_RPC_URL;
+            const key = process.env.DEPLOYER_PRIVATE_KEY;
 
-          if (!rpc) throw new Error("POLYGON_AMOY_RPC_URL GitHub secret is missing.");
-          if (!key) throw new Error("DEPLOYER_PRIVATE_KEY GitHub secret is missing.");
+            if (!rpc) {
+              throw new Error("POLYGON_AMOY_RPC_URL GitHub secret is missing.");
+            }
 
-          let wallet;
-          try {
-            wallet = new ethers.Wallet(key);
-          } catch {
-            throw new Error("DEPLOYER_PRIVATE_KEY is not a valid Ethereum private key. It should be the 64-hex-character private key, optionally prefixed with 0x.");
+            if (!key) {
+              throw new Error("DEPLOYER_PRIVATE_KEY GitHub secret is missing.");
+            }
+
+            let wallet;
+            try {
+              wallet = new ethers.Wallet(key);
+            } catch {
+              throw new Error(
+                "DEPLOYER_PRIVATE_KEY is not a valid Ethereum private key. It should be the 64-hex-character private key, optionally prefixed with 0x."
+              );
+            }
+
+            const provider = new ethers.JsonRpcProvider(rpc);
+            const network = await provider.getNetwork();
+            const balance = await provider.getBalance(wallet.address);
+
+            console.log("Deployer address:", wallet.address);
+            console.log("RPC chain ID:", network.chainId.toString());
+            console.log(
+              "Deployer balance:",
+              ethers.formatEther(balance),
+              "MATIC"
+            );
+
+            if (network.chainId !== 80002n) {
+              throw new Error(
+                "The configured RPC is not Polygon Amoy (chain ID 80002)."
+              );
+            }
+
+            if (balance === 0n) {
+              throw new Error(
+                "The deployer wallet has 0 MATIC on Polygon Amoy. Add Amoy test MATIC to this wallet before deploying."
+              );
+            }
           }
 
-          const provider = new ethers.JsonRpcProvider(rpc);
-          const network = await provider.getNetwork();
-          const balance = await provider.getBalance(wallet.address);
-
-          console.log("Deployer address:", wallet.address);
-          console.log("RPC chain ID:", network.chainId.toString());
-          console.log("Deployer balance:", ethers.formatEther(balance), "MATIC");
-
-          if (network.chainId !== 80002n) {
-            throw new Error("The configured RPC is not Polygon Amoy (chain ID 80002).");
-          }
-
-          if (balance === 0n) {
-            throw new Error("The deployer wallet has 0 MATIC on Polygon Amoy. Add Amoy test MATIC to this wallet before deploying.");
-          }
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
           NODE
 
       - name: Compile contract
