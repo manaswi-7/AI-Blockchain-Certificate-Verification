@@ -34,6 +34,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  function detectCertificateId(filename: string) {
+    const match = filename.match(/CERT\\d{6,}/i);
+    return match ? match[0].toUpperCase() : "";
+  }
+
   async function verify(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
@@ -67,10 +72,10 @@ export default function Home() {
               <span className="upload-icon">↑</span>
               <span className="upload-title">{file ? file.name : "Choose a certificate to verify"}</span>
               <span className="upload-subtitle">{file ? "Certificate selected" : "PNG, JPG or JPEG · Max 10 MB"}</span>
-              <input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setMessage(""); }} />
+              <input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { const selected = e.target.files?.[0] || null; setFile(selected); setResult(null); setMessage(""); if (selected) { const detected = detectCertificateId(selected.name); if (detected && !certificateId) setCertificateId(detected); } }} />
             </label>
             <div className="id-row">
-              <label className="field"><span>Certificate ID <em>Optional</em></span><input value={certificateId} onChange={(e) => setCertificateId(e.target.value)} placeholder="Enter ID if OCR cannot read it" /></label>
+              <label className="field"><span>Certificate ID <em>Optional</em></span><input value={certificateId} onChange={(e) => setCertificateId(e.target.value)} placeholder="Auto-detected from filename when possible" /></label>
               <button className="verify-button" disabled={!file || loading}>{loading ? "Verifying…" : "Verify certificate →"}</button>
             </div>
           </form>
