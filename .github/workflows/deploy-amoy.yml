@@ -2,6 +2,12 @@ name: Deploy CertificateRegistry to Polygon Amoy
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "blockchain/**"
+      - ".github/workflows/deploy-amoy.yml"
 
 jobs:
   deploy:
