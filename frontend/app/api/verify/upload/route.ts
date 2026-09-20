@@ -47,17 +47,25 @@ function isAddress(value: string | undefined): value is `0x${string}` {
   return !!value && /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
-function getConfig() {
+function getConfig(): {
+  rpcUrl: string;
+  contractAddress?: `0x${string}`;
+  configured: boolean;
+} {
   const rpcUrl =
     process.env.BLOCKCHAIN_RPC_URL ||
     process.env.POLYGON_AMOY_RPC_URL ||
     "";
-  const contractAddress = process.env.BLOCKCHAIN_CONTRACT_ADDRESS || "";
+  const rawContractAddress = process.env.BLOCKCHAIN_CONTRACT_ADDRESS;
+
+  const contractAddress = isAddress(rawContractAddress)
+    ? rawContractAddress
+    : undefined;
 
   return {
     rpcUrl,
-    contractAddress: isAddress(contractAddress) ? contractAddress : "",
-    configured: Boolean(rpcUrl) && isAddress(contractAddress),
+    contractAddress,
+    configured: Boolean(rpcUrl) && Boolean(contractAddress),
   };
 }
 
