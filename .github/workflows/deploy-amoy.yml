@@ -17,21 +17,54 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
-
-      - name: Show Node and npm versions
-        run: |
-          node --version
-          npm --version
+          node-version: 20
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Compile contract
-        run: npx hardhat compile
-
-      - name: Deploy CertificateRegistry
-        run: npx hardhat run scripts/deploy.js --network amoy
+      - name: Verify Polygon Amoy connection
         env:
           POLYGON_AMOY_RPC_URL: ${{ secrets.POLYGON_AMOY_RPC_URL }}
           DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: |
+          node - <<'NODE'
+          const { ethers } = require("ethers");
+
+          const rpc = process.env.POLYGON_AMOY_RPC_URL;
+          const key = process.env.DEPLOYER_PRIVATE_KEY;
+
+          if (!rpc) throw new Error("POLYGON_AMOY_RPC_URL GitHub secret is missing.");
+          if (!key) throw new Error("DEPLOYER_PRIVATE_KEY GitHub secret is missing.");
+
+          let wallet;
+          try {
+            wallet = new ethers.Wallet(key);
+          } catch {
+            throw new Error("DEPLOYER_PRIVATE_KEY is not a valid Ethereum private key. It should be the 64-hex-character private key, optionally prefixed with 0x.");
+          }
+
+          const provider = new ethers.JsonRpcProvider(rpc);
+          const network = await provider.getNetwork();
+          const balance = await provider.getBalance(wallet.address);
+
+          console.log("Deployer address:", wallet.address);
+          console.log("RPC chain ID:", network.chainId.toString());
+          console.log("Deployer balance:", ethers.formatEther(balance), "MATIC");
+
+          if (network.chainId !== 80002n) {
+            throw new Error("The configured RPC is not Polygon Amoy (chain ID 80002).");
+          }
+
+          if (balance === 0n) {
+            throw new Error("The deployer wallet has 0 MATIC on Polygon Amoy. Add Amoy test MATIC to this wallet before deploying.");
+          }
+          NODE
+
+      - name: Compile contract
+        run: npx hardhat compile --show-stack-traces
+
+      - name: Deploy CertificateRegistry
+        env:
+          POLYGON_AMOY_RPC_URL: ${{ secrets.POLYGON_AMOY_RPC_URL }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: npx hardhat run scripts/deploy.js --network amoy
