@@ -35,6 +35,48 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  function downloadDemoCertificate(tampered = false) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1000;
+    canvas.height = 700;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#f8f6ee";
+    ctx.fillRect(0, 0, 1000, 700);
+    ctx.strokeStyle = "#23374b";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(25, 25, 950, 650);
+    ctx.fillStyle = "#1e1e1e";
+    ctx.textAlign = "center";
+    ctx.font = "bold 32px Arial";
+    ctx.fillText("GNITS Certificate Verification Demo", 500, 90);
+    ctx.font = "bold 42px Arial";
+    ctx.fillText("CERTIFICATE OF ACHIEVEMENT", 500, 150);
+    ctx.font = "22px Arial";
+    ctx.fillText("This is to certify that", 500, 225);
+    ctx.font = "bold 38px Arial";
+    ctx.fillText("Hasini Kandula", 500, 275);
+    ctx.font = "22px Arial";
+    ctx.fillText("has successfully completed", 500, 340);
+    ctx.font = "bold 30px Arial";
+    ctx.fillText("Artificial Intelligence", 500, 390);
+    ctx.font = "22px Arial";
+    ctx.fillText("Grade: A+", 500, 440);
+    ctx.fillText("Certificate ID: CERT-2026-000001", 500, 490);
+    ctx.fillText("Issue Date: 01-01-2026", 500, 535);
+    if (tampered) {
+      ctx.fillStyle = "#f8f6ee";
+      ctx.fillRect(250, 245, 500, 50);
+      ctx.fillStyle = "#aa1e1e";
+      ctx.font = "bold 24px Arial";
+      ctx.fillText("MODIFIED RECIPIENT", 500, 278);
+    }
+    const link = document.createElement("a");
+    link.download = tampered ? "test-certificate-tampered.png" : "test-certificate-genuine.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
   async function verify(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
@@ -68,6 +110,10 @@ export default function Home() {
           <p className="eyebrow">UPLOAD · ANALYZE · VERIFY</p>
           <h1>Verify a certificate using AI + Blockchain.</h1>
           <p className="lead">Upload the certificate image. The system extracts certificate information with OCR, checks for suspicious visual changes using AI, generates a SHA-256 fingerprint, and compares it with the immutable blockchain record.</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+            <button type="button" onClick={() => downloadDemoCertificate(false)}>Download genuine test certificate</button>
+            <button type="button" onClick={() => downloadDemoCertificate(true)}>Download tampered test certificate</button>
+          </div>
           <form onSubmit={verify} className="verify" style={{ display: "grid", gap: 14 }}>
             <label style={{ display: "grid", gap: 8 }}><strong>Upload certificate</strong><input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setMessage(""); }} /></label>
             <label style={{ display: "grid", gap: 8 }}><strong>Certificate ID <span style={{ fontWeight: 400 }}>(optional)</span></strong><input value={certificateId} onChange={(e) => setCertificateId(e.target.value)} placeholder="Enter ID if OCR cannot read it" /></label>
