@@ -12,23 +12,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: blockchain/package-lock.json
+          node-version: 24
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Compile contract
         run: npx hardhat compile
-        env:
-          POLYGON_AMOY_RPC_URL: ${{ secrets.POLYGON_AMOY_RPC_URL }}
-          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
 
       - name: Deploy CertificateRegistry
         run: npx hardhat run scripts/deploy.js --network amoy
