@@ -1,289 +1,412 @@
-"""Generate 500 genuine + 500 realistically tampered synthetic certificates.
+"""Generate a clean paired certificate-tampering dataset.
 
-The certificate layout is kept fixed at 2048x1447. Tampering changes only the
-selected content/region and never writes labels such as ORIGINAL, TAMPERED,
-FAKE, ALTERED, etc. The visual styling of edited text matches the template.
+IMPORTANT:
+- This script NEVER redraws the certificate template.
+- It starts from the exact clean template image supplied by the project.
+- It preserves the template dimensions and all fixed layout elements.
+- It writes no class/tamper labels into certificate pixels.
+- Every tampered image is derived from its corresponding genuine image.
+
+Expected template:
+    certificate_generation/template/real_name.png
+
+Expected template size:
+    2048 x 1447
 
 Output:
-  dataset/certificates/real/*.png
-  dataset/certificates/tampered/*.png
-  dataset/certificates/metadata.csv
+    certificate_generation/dataset/real/*.png
+    certificate_generation/dataset/tampered/*.png
+    certificate_generation/dataset/metadata.csv
 """
+from __future__ import annotations
+
 from pathlib import Path
+import argparse
 import csv
 import random
+import shutil
+
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
 
 ROOT = Path(__file__).resolve().parent
-DATASET = ROOT / "dataset" / "certificates"
+TEMPLATE = ROOT / "template" / "real_name.png"
+DATASET = ROOT / "dataset"
 REAL = DATASET / "real"
 TAMPERED = DATASET / "tampered"
 
-W, H = 2048, 1447
-SEED = 20250920
+WIDTH, HEIGHT = 2048, 1447
+SEED = 42
+
+BLUE = (10, 20, 130)
+BLACK = (25, 25, 25)
+WHITE = (255, 255, 255)
+GREEN = (0, 100, 0)
+
+FONT_REGULAR = "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"
+FONT_BOLD = "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
 
 FIRST_NAMES = [
-    "Aarav","Aadhya","Abhinav","Aditya","Akash","Akanksha","Amrutha","Ananya",
-    "Anirudh","Anjali","Arjun","Ashwin","Bhavana","Chaitanya","Charan","Deepak",
-    "Diya","Divya","Eesha","Gautam","Harini","Harsha","Ishita","Jahnavi","Karthik",
-    "Keerthi","Krishna","Lakshmi","Manoj","Meghana","Mohan","Nandini","Navya",
-    "Neha","Nikhil","Nisha","Pavan","Pranav","Pranitha","Priya","Rahul","Rakesh",
-    "Ravi","Riya","Rohit","Sahana","Saketh","Sanjana","Sanjay","Shreya","Siddharth",
-    "Sneha","Srinivas","Srujana","Swathi","Tanvi","Tejas","Vaishnavi","Varun",
-    "Vasavi","Vignesh","Vijay","Vishal","Yash","Yamini"
+    "Aarav", "Aadhya", "Abhinav", "Aditya", "Akash", "Ananya", "Anirudh",
+    "Anjali", "Arjun", "Ashwin", "Bhavana", "Chaitanya", "Charan", "Deepak",
+    "Diya", "Divya", "Eesha", "Gautam", "Harini", "Harsha", "Ishita",
+    "Jahnavi", "Karthik", "Keerthi", "Krishna", "Lakshmi", "Manoj",
+    "Meghana", "Mohan", "Nandini", "Navya", "Neha", "Nikhil", "Nisha",
+    "Pavan", "Pranav", "Pranitha", "Priya", "Rahul", "Rakesh", "Ravi",
+    "Riya", "Rohit", "Sahana", "Saketh", "Sanjana", "Sanjay", "Shreya",
+    "Siddharth", "Sneha", "Srinivas", "Srujana", "Swathi", "Tanvi",
+    "Tejas", "Vaishnavi", "Varun", "Vasavi", "Vignesh", "Vijay",
+    "Vishal", "Yash", "Yamini",
 ]
 LAST_NAMES = [
-    "Reddy","Rao","Sharma","Patel","Kumar","Singh","Nair","Iyer","Varma","Verma",
-    "Naidu","Goud","Gupta","Mehta","Joshi","Deshmukh","Das","Mishra","Khan","Bose",
-    "Chowdary","Kandula","Pothula","Vemula","Konda","Yadav","Bansal","Agarwal",
-    "Kapoor","Malhotra","Menon","Pillai","Shetty","Hegde","Kulkarni","Jain"
+    "Reddy", "Rao", "Sharma", "Patel", "Kumar", "Singh", "Nair", "Iyer",
+    "Varma", "Verma", "Naidu", "Goud", "Gupta", "Mehta", "Joshi",
+    "Deshmukh", "Das", "Mishra", "Khan", "Bose", "Chowdary", "Kandula",
+    "Pothula", "Vemula", "Konda", "Yadav", "Bansal", "Agarwal", "Kapoor",
+    "Malhotra", "Menon", "Pillai", "Shetty", "Hegde", "Kulkarni", "Jain",
 ]
-DEPARTMENTS = ["Information Technology","Computer Science","Artificial Intelligence",
-               "Electronics and Communication","Electrical Engineering"]
+DEPARTMENTS = [
+    "Information Technology",
+    "Computer Science",
+    "Artificial Intelligence",
+]
 COURSES = [
-    ("CS401","Machine Learning",4),("CS402","Database Systems",3),
-    ("CS403","Artificial Intelligence",4),("CS404","Computer Networks",3),
-    ("CS405","Data Mining",4),("CS406","Software Engineering",3)
+    ("CS401", "Machine Learning", 4),
+    ("CS402", "Database Systems", 3),
+    ("CS403", "Artificial Intelligence", 4),
+    ("CS404", "Computer Networks", 3),
+    ("CS405", "Data Mining", 4),
+    ("CS406", "Software Engineering", 3),
 ]
-GRADES = [("O",10),("A+",9),("A",8),("B+",7),("B",6)]
-TAMPERS = ["name","date","certificate_id","roll_number","marks","grade",
-           "signature","qr","seal","photo","course","academic_year"]
+GRADE_POINTS = [("O", 10), ("A+", 9), ("A", 8), ("B+", 7), ("B", 6)]
 
-TEXT = (10, 20, 130)
-BLACK = (20, 20, 20)
-WHITE = (255, 255, 255)
+# Exact text-field positions measured from the supplied 2048x1447 template.
+FIELDS = {
+    "certificate_id": (410, 218, 780, 256),
+    "date": (410, 258, 700, 296),
+    "name": (410, 299, 930, 335),
+    "roll": (410, 337, 760, 375),
+    "department": (410, 376, 760, 410),
+    "semester": (410, 414, 650, 448),
+    "academic_year": (410, 454, 760, 490),
+}
+
+# Table vertical boundaries from the supplied template.
+COLS = [42, 147, 667, 767, 865, 963, 1061, 1159]
+TABLE_TOP = 704
+HEADER_HEIGHT = 45
+ROW_HEIGHT = 45
 
 
-def font(size, bold=False):
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-    ]
-    for p in paths:
-        if Path(p).exists():
-            return ImageFont.truetype(p, size)
+def font(size: int, bold: bool = False):
+    path = FONT_BOLD if bold else FONT_REGULAR
+    if Path(path).exists():
+        return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-def student(i):
-    rng = random.Random(SEED + i)
-    name = f"{FIRST_NAMES[i % len(FIRST_NAMES)]} {LAST_NAMES[(i * 7) % len(LAST_NAMES)]}"
-    cert_id = f"CERT2025{i+1:06d}"
-    roll = f"FTU24{(i+1):04d}"
-    dept = DEPARTMENTS[i % len(DEPARTMENTS)]
-    semester = ["IV","V","VI","VII","VIII"][i % 5]
-    year = f"{2024 + (i % 3)}-{2025 + (i % 3)}"
-    day = (i % 28) + 1
-    month = (i % 12) + 1
+def require_template() -> Image.Image:
+    if not TEMPLATE.exists():
+        raise FileNotFoundError(
+            f"Exact template is missing: {TEMPLATE}\n"
+            "Put the supplied clean certificate image at that path. "
+            "Do not use a recreated/redrawn template."
+        )
+    image = Image.open(TEMPLATE).convert("RGB")
+    if image.size != (WIDTH, HEIGHT):
+        raise ValueError(
+            f"Template size is {image.size}; expected {(WIDTH, HEIGHT)}. "
+            "The template must not be resized."
+        )
+    return image
+
+
+def clear_box(draw: ImageDraw.ImageDraw, box):
+    draw.rectangle(box, fill=WHITE)
+
+
+def put_left(draw, xy, text, size=18, color=BLUE):
+    draw.text(xy, text, fill=color, font=font(size))
+
+
+def put_center(draw, box, text, size=12, color=BLACK):
+    x1, y1, x2, y2 = box
+    f = font(size)
+    bb = draw.textbbox((0, 0), str(text), font=f)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    x = x1 + max(0, (x2 - x1 - tw) / 2)
+    y = y1 + max(0, (y2 - y1 - th) / 2) - 1
+    draw.text((int(x), int(y)), str(text), fill=color, font=f)
+
+
+def random_name(rng: random.Random, current: str) -> str:
+    while True:
+        value = f"{rng.choice(FIRST_NAMES)} {rng.choice(LAST_NAMES)}"
+        if value != current:
+            return value
+
+
+def make_record(index: int):
+    rng = random.Random(SEED + index)
+    cert_id = f"CERT2025{index + 1:06d}"
+    name = f"{FIRST_NAMES[index % len(FIRST_NAMES)]} {LAST_NAMES[(index * 7) % len(LAST_NAMES)]}"
+    roll = f"FTU24{index + 1:04d}"
+    day = index % 28 + 1
+    month = index % 12 + 1
     date = f"{day:02d}-{month:02d}-2025"
+    dept = DEPARTMENTS[index % len(DEPARTMENTS)]
+    semester = ["IV", "V", "VI", "VII", "VIII"][index % 5]
+    academic_year = f"{2024 + index % 3}-{2025 + index % 3}"
+
     rows = []
-    points = []
-    for j, (code, course, credits) in enumerate(COURSES):
-        internal = 20 + ((i * 7 + j * 3) % 11)
-        external = 35 + ((i * 11 + j * 5) % 36)
+    grade_points = []
+    for j, (code, subject, credits) in enumerate(COURSES):
+        internal = 20 + ((index * 7 + j * 3) % 11)
+        external = 35 + ((index * 11 + j * 5) % 36)
         total = internal + external
-        grade, gp = GRADES[(i + j) % len(GRADES)]
-        rows.append((code, course, credits, internal, external, total, grade))
-        points.append(gp * credits)
-    sgpa = round(sum(points) / sum(c for _,_,c,*_ in rows), 2)
-    cgpa = round(6.85 + ((i * 37) % 140) / 100, 2)
-    return dict(name=name, cert_id=cert_id, roll=roll, dept=dept,
-                semester=semester, year=year, date=date, rows=rows,
-                sgpa=sgpa, cgpa=cgpa, seed=rng.randint(0, 10**9))
+        grade, gp = GRADE_POINTS[(index + j) % len(GRADE_POINTS)]
+        rows.append([code, subject, credits, internal, external, total, grade])
+        grade_points.append((credits, gp))
+
+    sgpa = round(
+        sum(credits * gp for credits, gp in grade_points)
+        / sum(credits for credits, _ in grade_points),
+        2,
+    )
+    cgpa = round(6.85 + ((index * 37) % 140) / 100, 2)
+
+    return {
+        "certificate_id": cert_id,
+        "name": name,
+        "roll": roll,
+        "date": date,
+        "department": dept,
+        "semester": semester,
+        "academic_year": academic_year,
+        "rows": rows,
+        "sgpa": sgpa,
+        "cgpa": cgpa,
+        "seed": rng.randint(0, 10**9),
+    }
 
 
-def draw_qr(value, x=1040, y=322, size=120):
+def redraw_variable_fields(template: Image.Image, record: dict) -> Image.Image:
+    """Create a genuine certificate by changing only variable content."""
+    out = template.copy()
+    d = ImageDraw.Draw(out)
+
+    for key, value in [
+        ("certificate_id", record["certificate_id"]),
+        ("date", record["date"]),
+        ("name", record["name"]),
+        ("roll", record["roll"]),
+        ("department", record["department"]),
+        ("semester", record["semester"]),
+        ("academic_year", record["academic_year"]),
+    ]:
+        clear_box(d, FIELDS[key])
+        x = FIELDS[key][0] + 6
+        y = FIELDS[key][1] + 5
+        put_left(d, (x, y), value, 18, BLUE)
+
+    # Table values only; borders/header remain untouched.
+    for row_index, row in enumerate(record["rows"]):
+        y1 = TABLE_TOP + HEADER_HEIGHT + row_index * ROW_HEIGHT
+        y2 = y1 + ROW_HEIGHT
+        for col_index, value in enumerate(row):
+            if col_index == 2:
+                size = 12
+            else:
+                size = 12
+            put_center(
+                d,
+                (COLS[col_index] + 3, y1 + 3, COLS[col_index + 1] - 3, y2 - 3),
+                value,
+                size,
+                BLACK,
+            )
+
+    # SGPA / CGPA value regions only.
+    clear_box(d, (145, 1080, 220, 1115))
+    put_left(d, (160, 1087), f"{record['sgpa']:.2f}", 17, GREEN)
+    clear_box(d, (455, 1080, 525, 1115))
+    put_left(d, (465, 1087), f"{record['cgpa']:.2f}", 17, GREEN)
+
+    # Barcode text and bars are variable data, but their layout stays fixed.
+    rng = random.Random(record["seed"])
+    d.rectangle((690, 1118, 990, 1178), fill=WHITE)
+    x = 700
+    while x < 970:
+        width = rng.choice([2, 3, 4])
+        if rng.random() < 0.58:
+            d.rectangle((x, 1125, x + width, 1165), fill=BLACK)
+        x += width + rng.choice([2, 3, 4])
+    d.text((700, 1173), record["certificate_id"], fill=BLACK, font=font(10))
+
+    # QR value changes, QR frame/position/size does not.
     qr = qrcode.QRCode(version=2, box_size=4, border=1)
-    qr.add_data(value)
+    qr.add_data(
+        f"{record['certificate_id']}|{record['name']}|{record['roll']}"
+    )
     qr.make(fit=True)
     q = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    return q.resize((size, size), Image.Resampling.NEAREST)
+    q = q.resize((120, 120), Image.Resampling.NEAREST)
+    out.paste(q, (740, 322))
 
-
-def base_certificate(s):
-    img = Image.new("RGB", (W, H), WHITE)
-    d = ImageDraw.Draw(img)
-    d.rectangle((23,23,W-23,H-23), outline=(20,20,20), width=3)
-    d.rounded_rectangle((35,42,W-35,173), radius=12, fill=(235,244,255), outline=(55,110,245), width=2)
-    d.ellipse((74,72,170,168), outline=(25,75,170), width=3)
-    d.ellipse((88,86,156,154), outline=(25,75,170), width=2)
-    d.polygon([(122,96),(151,110),(143,143),(122,157),(101,143),(94,110)], fill=(224,237,255), outline=(130,155,200))
-    d.text((197,64),"FUTURETECH UNIVERSITY",fill=(8,28,130),font=font(36,True))
-    d.text((198,111),"Autonomous | NAAC A++ | UGC Approved",fill=BLACK,font=font(17))
-    d.text((798,168),"ACADEMIC GRADE MEMORANDUM",fill=(10,10,10),font=font(25,True))
-
-    d.rectangle((42,195,1005,628), outline=(155,155,155), width=2)
-    labels = [("Certificate ID",s["cert_id"]),("Issue Date",s["date"]),("Student Name",s["name"]),
-              ("Roll Number",s["roll"]),("Department",s["dept"]),("Semester",s["semester"]),
-              ("Academic Year",s["year"])]
-    ys=[228,267,306,345,384,423,462]
-    for (lab,val),y in zip(labels,ys):
-        d.text((75,y),lab,fill=(15,15,15),font=font(18,True))
-        d.text((378,y),":",fill=(15,15,15),font=font(18,True))
-        d.text((416,y),val,fill=TEXT,font=font(18))
-
-    q = draw_qr(s["cert_id"]+"|"+s["name"]+"|"+s["roll"])
-    d.rectangle((1018,300,1182,464), fill=WHITE, outline=(40,40,40), width=2)
-    img.paste(q, (1040,322))
-    d.text((1042,462),"QR CODE",fill=(100,100,100),font=font(12))
-
-    d.rectangle((1360,198,1660,528), outline=(70,70,70), width=2)
-    d.rectangle((1428,248,1593,493), fill=(255,250,220), outline=(40,40,40), width=2)
-    d.ellipse((1480,267,1540,327), fill=(255,190,120), outline=(20,20,20))
-    d.rectangle((1460,330,1560,455), fill=(0,105,0))
-    d.text((1435,470),s["roll"],fill=(30,30,30),font=font(7))
-
-    x0,y0=42,704
-    widths=[105,520,100,98,98,98,98]
-    headers=["Course","Subject Name","Credits","Internal","External","Total","Grade"]
-    xs=[x0]
-    for ww in widths: xs.append(xs[-1]+ww)
-    d.rectangle((x0,y0,xs[-1],y0+315), outline=(80,80,80), width=2)
-    d.rectangle((x0,y0,xs[-1],y0+45), fill=(220,235,255))
-    for x in xs[1:-1]: d.line((x,y0,x,y0+315),fill=(100,100,100),width=1)
-    for k,h in enumerate(headers):
-        bb=d.textbbox((0,0),h,font=font(13,True))
-        d.text(((xs[k]+xs[k+1]-bb[2])/2,y0+14),h,fill=BLACK,font=font(13,True))
-    for r,row in enumerate(s["rows"]):
-        yy=y0+45+r*45
-        d.line((x0,yy,xs[-1],yy),fill=(205,205,205),width=1)
-        for k,v in enumerate(row):
-            txt=str(v)
-            bb=d.textbbox((0,0),txt,font=font(12))
-            d.text(((xs[k]+xs[k+1]-bb[2])/2,yy+14),txt,fill=(25,25,25),font=font(12))
-
-    d.line((42,1055,1985,1055),fill=(150,150,150),width=1)
-    d.text((70,1090),"SGPA:",fill=(15,15,15),font=font(17,True))
-    d.text((160,1090),f"{s['sgpa']:.2f}",fill=(0,100,0),font=font(17,True))
-    d.text((375,1090),"CGPA:",fill=(15,15,15),font=font(17,True))
-    d.text((465,1090),f"{s['cgpa']:.2f}",fill=(0,100,0),font=font(17,True))
-
-    bx,by=700,1125
-    rng=random.Random(s["seed"])
-    for j in range(70):
-        if rng.random() < .55:
-            d.rectangle((bx+j*4,by,bx+j*4+2,by+40),fill=(15,15,15))
-    d.text((700,1173),s["cert_id"],fill=(20,20,20),font=font(10))
-    d.ellipse((1010,1095,1090,1175),outline=(40,100,230),width=3)
-    d.ellipse((1023,1108,1077,1162),outline=(80,130,240),width=1)
-    d.text((1000,1188),"OFFICIAL SEAL",fill=(255,0,0),font=font(10,True))
-    d.arc((1450,1110,1570,1160),180,350,fill=(60,90,160),width=2)
-    d.line((1455,1148,1560,1122),fill=(60,90,160),width=2)
-    d.line((1430,1170,1610,1170),fill=(40,40,40),width=1)
-    d.text((1450,1183),"Controller of Examinations",fill=(20,20,20),font=font(12,True))
-    return img
-
-
-def alternate_name(s, rng):
-    current = s["name"]
-    while True:
-        candidate = f"{rng.choice(FIRST_NAMES)} {rng.choice(LAST_NAMES)}"
-        if candidate != current:
-            return candidate
-
-
-def tamper(img, s, kind):
-    out=img.copy()
-    d=ImageDraw.Draw(out)
-    rng=random.Random(s["seed"] + sum(kind.encode("utf-8")))
-
-    if kind == "name":
-        new = alternate_name(s, rng)
-        d.rectangle((410,300,930,334), fill=WHITE)
-        d.text((416,304),new,fill=TEXT,font=font(18))
-
-    elif kind == "date":
-        new=f"{rng.randint(1,28):02d}-{rng.randint(1,12):02d}-{rng.choice([2025,2026,2027])}"
-        d.rectangle((410,260,700,294), fill=WHITE)
-        d.text((416,265),new,fill=TEXT,font=font(18))
-
-    elif kind == "certificate_id":
-        new=f"CERT2025{rng.randint(501,999):06d}"
-        d.rectangle((410,220,760,254), fill=WHITE)
-        d.text((416,225),new,fill=TEXT,font=font(18))
-
-    elif kind == "roll_number":
-        new=f"FTU24{rng.randint(5000,9999):04d}"
-        d.rectangle((410,338,760,373), fill=WHITE)
-        d.text((416,343),new,fill=TEXT,font=font(18))
-
-    elif kind == "marks":
-        row=rng.randrange(6)
-        yy=704+45+row*45
-        old=str(s["rows"][row][4])
-        new=str(min(70, max(35, int(old)+rng.choice([-8,-5,5,7,9]))))
-        d.rectangle((865,yy+8,963,yy+38),fill=WHITE)
-        bb=d.textbbox((0,0),new,font=font(12))
-        d.text(((865+963-bb[2])/2,yy+14),new,fill=(25,25,25),font=font(12))
-
-    elif kind == "grade":
-        row=rng.randrange(6)
-        yy=704+45+row*45
-        old=s["rows"][row][6]
-        new=rng.choice([g for g,_ in GRADES if g!=old])
-        d.rectangle((1061,yy+8,1158,yy+38),fill=WHITE)
-        bb=d.textbbox((0,0),new,font=font(12))
-        d.text(((1061+1158-bb[2])/2,yy+14),new,fill=(25,25,25),font=font(12))
-
-    elif kind == "signature":
-        d.arc((1450,1112,1575,1158),195,355,fill=(65,95,165),width=2)
-        d.line((1455,1144,1568,1120),fill=(65,95,165),width=2)
-        d.arc((1490,1100,1540,1150),190,320,fill=(65,95,165),width=2)
-
-    elif kind == "qr":
-        new_value=f"{s['cert_id']}|{alternate_name(s,rng)}|{s['roll']}|verification"
-        q=draw_qr(new_value)
-        d.rectangle((1018,300,1182,464),fill=WHITE,outline=(40,40,40),width=2)
-        out.paste(q,(1040,322))
-
-    elif kind == "seal":
-        d.ellipse((1010,1095,1090,1175),outline=(45,105,225),width=3)
-        d.arc((1020,1105,1080,1165),20,310,fill=(65,115,230),width=1)
-
-    elif kind == "photo":
-        d.rectangle((1428,248,1593,493),fill=(255,250,220),outline=(40,40,40),width=2)
-        skin=rng.choice([(230,170,120),(205,140,95),(245,190,145)])
-        shirt=rng.choice([(20,70,120),(70,60,130),(110,70,40)])
-        d.ellipse((1480,267,1540,327),fill=skin,outline=(20,20,20))
-        d.rectangle((1460,330,1560,455),fill=shirt)
-        d.text((1435,470),s["roll"],fill=(30,30,30),font=font(7))
-
-    elif kind == "course":
-        row=rng.randrange(6)
-        yy=704+45+row*45
-        alternatives=[c for _,c,_ in COURSES if c!=s["rows"][row][1]]
-        new=rng.choice(alternatives)
-        d.rectangle((147,yy+8,667,yy+38),fill=WHITE)
-        bb=d.textbbox((0,0),new,font=font(12))
-        d.text(((147+667-bb[2])/2,yy+14),new,fill=(25,25,25),font=font(12))
-
-    elif kind == "academic_year":
-        start=rng.choice([2023,2025,2026])
-        new=f"{start}-{start+1}"
-        d.rectangle((410,462,760,496),fill=WHITE)
-        d.text((416,468),new,fill=TEXT,font=font(18))
+    # Photo's printed roll number follows the record; frame/photo layout remains.
+    clear_box(d, (1432, 466, 1560, 486))
+    d.text((1435, 470), record["roll"], fill=BLACK, font=font(7))
 
     return out
 
 
-def generate(count=500):
-    REAL.mkdir(parents=True,exist_ok=True)
-    TAMPERED.mkdir(parents=True,exist_ok=True)
-    with open(DATASET/"metadata.csv","w",newline="",encoding="utf-8") as f:
-        w=csv.writer(f)
-        w.writerow(["certificate_id","name","roll_number","department","semester","academic_year","tamper_type","real_file","tampered_file"])
+def replace_text_field(image: Image.Image, field: str, value: str):
+    out = image.copy()
+    d = ImageDraw.Draw(out)
+    box = FIELDS[field]
+    clear_box(d, box)
+    put_left(d, (box[0] + 6, box[1] + 5), value, 18, BLUE)
+    return out
+
+
+def replace_table_cell(image: Image.Image, row: int, col: int, value):
+    out = image.copy()
+    d = ImageDraw.Draw(out)
+    y1 = TABLE_TOP + HEADER_HEIGHT + row * ROW_HEIGHT
+    y2 = y1 + ROW_HEIGHT
+    box = (COLS[col] + 3, y1 + 3, COLS[col + 1] - 3, y2 - 3)
+    clear_box(d, box)
+    put_center(d, box, value, 12, BLACK)
+    return out
+
+
+def tamper_one_field(genuine: Image.Image, record: dict, index: int):
+    """Return exactly one realistic content manipulation per genuine image."""
+    rng = random.Random(SEED * 1000 + index)
+    kinds = [
+        "name", "date", "certificate_id", "roll_number",
+        "marks", "grade", "subject", "academic_year", "qr", "photo"
+    ]
+    kind = kinds[index % len(kinds)]
+
+    if kind == "name":
+        return replace_text_field(genuine, "name", random_name(rng, record["name"])), kind
+
+    if kind == "date":
+        new_date = f"{rng.randint(1,28):02d}-{rng.randint(1,12):02d}-{rng.choice([2025,2026,2027])}"
+        return replace_text_field(genuine, "date", new_date), kind
+
+    if kind == "certificate_id":
+        new_id = f"CERT2025{rng.randint(900001,999999):06d}"
+        return replace_text_field(genuine, "certificate_id", new_id), kind
+
+    if kind == "roll_number":
+        new_roll = f"FTU24{rng.randint(5000,9999):04d}"
+        return replace_text_field(genuine, "roll", new_roll), kind
+
+    if kind == "marks":
+        row = rng.randrange(6)
+        col = 4  # External
+        old = int(record["rows"][row][col])
+        delta = rng.choice([-9, -6, 6, 9])
+        new_value = str(max(35, min(70, old + delta)))
+        return replace_table_cell(genuine, row, col, new_value), kind
+
+    if kind == "grade":
+        row = rng.randrange(6)
+        old = record["rows"][row][6]
+        options = [g for g, _ in GRADE_POINTS if g != old]
+        return replace_table_cell(genuine, row, 6, rng.choice(options)), kind
+
+    if kind == "subject":
+        row = rng.randrange(6)
+        old = record["rows"][row][1]
+        options = [subject for _, subject, _ in COURSES if subject != old]
+        return replace_table_cell(genuine, row, 1, rng.choice(options)), kind
+
+    if kind == "academic_year":
+        start = rng.choice([2023, 2025, 2026])
+        return replace_text_field(genuine, "academic_year", f"{start}-{start + 1}"), kind
+
+    if kind == "qr":
+        out = genuine.copy()
+        qr = qrcode.QRCode(version=2, box_size=4, border=1)
+        qr.add_data(f"{record['certificate_id']}|{random_name(rng, record['name'])}|{record['roll']}")
+        qr.make(fit=True)
+        q = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        q = q.resize((120, 120), Image.Resampling.NEAREST)
+        out.paste(q, (740, 322))
+        return out, kind
+
+    # photo: keep the exact frame, size and position; change only the image content.
+    out = genuine.copy()
+    d = ImageDraw.Draw(out)
+    d.rectangle((1429, 249, 1592, 492), fill=(255, 250, 220), outline=(40, 40, 40), width=2)
+    skin = rng.choice([(230, 170, 120), (205, 140, 95), (245, 190, 145)])
+    shirt = rng.choice([(20, 70, 120), (70, 60, 130), (110, 70, 40)])
+    d.ellipse((1480, 267, 1540, 327), fill=skin, outline=(20, 20, 20))
+    d.rectangle((1460, 330, 1560, 455), fill=shirt)
+    d.text((1435, 470), record["roll"], fill=BLACK, font=font(7))
+    return out, kind
+
+
+def validate_pair(genuine: Image.Image, tampered: Image.Image):
+    if genuine.size != (WIDTH, HEIGHT) or tampered.size != (WIDTH, HEIGHT):
+        raise ValueError("A generated image changed the template dimensions.")
+    # The pair must differ; there must be no full-image replacement.
+    if genuine.tobytes() == tampered.tobytes():
+        raise ValueError("Tampered image is identical to genuine image.")
+
+
+def generate(count: int = 500, seed: int = SEED):
+    global SEED
+    SEED = seed
+
+    template = require_template()
+    if REAL.exists():
+        shutil.rmtree(REAL)
+    if TAMPERED.exists():
+        shutil.rmtree(TAMPERED)
+    REAL.mkdir(parents=True, exist_ok=True)
+    TAMPERED.mkdir(parents=True, exist_ok=True)
+
+    metadata_path = DATASET / "metadata.csv"
+    with metadata_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "certificate_id", "real_file", "tampered_file",
+            "tamper_type", "name", "roll_number", "date",
+            "department", "semester", "academic_year"
+        ])
+
         for i in range(count):
-            s=student(i)
-            original=base_certificate(s)
-            real_name=f"{s['cert_id']}.png"
-            tamper_kind=TAMPERS[i % len(TAMPERS)]
-            tampered_name=f"{s['cert_id']}__{tamper_kind}.png"
-            original.save(REAL/real_name,compress_level=6)
-            tamper(original,s,tamper_kind).save(TAMPERED/tampered_name,compress_level=6)
-            w.writerow([s["cert_id"],s["name"],s["roll"],s["dept"],s["semester"],s["year"],tamper_kind,real_name,tampered_name])
-    print(f"Generated {count} genuine + {count} tampered certificates.")
+            record = make_record(i)
+            genuine = redraw_variable_fields(template, record)
+            tampered, tamper_type = tamper_one_field(genuine, record, i)
+            validate_pair(genuine, tampered)
+
+            real_name = f"{record['certificate_id']}.png"
+            tampered_name = f"{record['certificate_id']}__{tamper_type}.png"
+
+            genuine.save(REAL / real_name, optimize=True)
+            tampered.save(TAMPERED / tampered_name, optimize=True)
+
+            writer.writerow([
+                record["certificate_id"], real_name, tampered_name,
+                tamper_type, record["name"], record["roll"],
+                record["date"], record["department"], record["semester"],
+                record["academic_year"],
+            ])
+
+    print(f"Generated {count} genuine + {count} tampered images.")
+    print(f"Real: {REAL}")
+    print(f"Tampered: {TAMPERED}")
+    print(f"Metadata: {metadata_path}")
 
 
-if __name__=="__main__":
-    generate(500)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--count", type=int, default=500)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    generate(max(1, args.count), args.seed)
