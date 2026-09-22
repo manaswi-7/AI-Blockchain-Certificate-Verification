@@ -5,20 +5,32 @@ import sharp from "sharp";
 
 let sessionPromise: Promise<ort.InferenceSession> | undefined;
 
-const MODEL_CANDIDATES = [
-  path.join(process.cwd(), "models", "certificate_tamper_model.onnx"),
-  path.join(process.cwd(), "frontend", "models", "certificate_tamper_model.onnx"),
-];
+const MODEL_RELATIVE_PATH = path.join("models", "certificate_tamper_model.onnx");
+
+function modelCandidates() {
+  const candidates = [
+    path.join(process.cwd(), MODEL_RELATIVE_PATH),
+    path.join(process.cwd(), "frontend", MODEL_RELATIVE_PATH),
+    path.join(__dirname, MODEL_RELATIVE_PATH),
+    path.join(__dirname, "..", "..", MODEL_RELATIVE_PATH),
+  ];
+  return [...new Set(candidates)];
+}
 
 async function getModelBytes() {
-  for (const modelPath of MODEL_CANDIDATES) {
+  const errors: string[] = [];
+
+  for (const modelPath of modelCandidates()) {
     try {
-      return await fs.readFile(modelPath);
-    } catch {
-      // Try the next deployment layout.
+      const model = await fs.readFile(modelPath);
+      if (model.length === 0) throw new Error("empty file");
+      return model;
+    } catch (error) {
+      errors.push(`${modelPath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  throw new Error("AI model file is not deployed");
+
+  throw new Error(`AI model could not be loaded. Checked: ${errors.join(" | ")}`);
 }
 
 async function getSession() {
