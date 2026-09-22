@@ -16,6 +16,7 @@ type Verification = {
   blockchainMatch?: boolean;
   blockchainAvailable?: boolean;
   hashMatch?: boolean;
+  documentHash?: string;
 };
 
 function resultLabel(result?: string) {
