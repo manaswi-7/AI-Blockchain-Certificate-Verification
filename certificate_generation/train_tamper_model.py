@@ -1,5 +1,7 @@
 """Train a transfer-learning certificate tampering classifier.\n\nProduction training is automatically run by GitHub Actions when this file changes.
 
+# The trained artifact is exported to both Keras and ONNX by the CI workflow.
+
 Expected dataset layout:
   dataset/split/train/{real,tampered}
   dataset/split/validation/{real,tampered}
