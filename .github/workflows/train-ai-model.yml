@@ -70,4 +70,5 @@ jobs:
           git add ai-service/models/certificate_tamper_model.keras ai-service/models/test_metrics.json frontend/models/certificate_tamper_model.onnx
           git diff --cached --quiet && exit 0
           git commit -m "Add trained certificate tampering models"
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
