@@ -12,13 +12,17 @@ def load_model():
     global _model
     if _model is not None:
         return _model
+
     if not MODEL_PATH.exists():
         return None
 
-    import tensorflow as tf
-
-    _model = tf.keras.models.load_model(MODEL_PATH)
-    return _model
+    try:
+        import tensorflow as tf
+        _model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        return _model
+    except Exception as exc:
+        print(f"Failed to load tampering model: {exc}")
+        return None
 
 
 def predict(image: Image.Image):
@@ -32,10 +36,14 @@ def predict(image: Image.Image):
         image.convert("RGB").resize((224, 224)),
         dtype=np.float32,
     )[None, ...]
-    # Training uses MobileNetV2 preprocess_input inside the model pipeline.
     arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
 
-    probability = float(model.predict(arr, verbose=0)[0][0])
+    try:
+        probability = float(model.predict(arr, verbose=0)[0][0])
+    except Exception as exc:
+        print(f"Tampering model prediction failed: {exc}")
+        return None
+
     classification = "TAMPERED" if probability >= 0.5 else "GENUINE"
     confidence = probability if classification == "TAMPERED" else 1.0 - probability
 
