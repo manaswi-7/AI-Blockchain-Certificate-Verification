@@ -6,6 +6,7 @@ import sharp from "sharp";
 let sessionPromise: Promise<ort.InferenceSession> | undefined;
 
 const MODEL_PATH = path.join(process.cwd(), "models", "certificate_tamper_model.onnx");
+const FALLBACK_THRESHOLD = 0.5;
 
 async function getSession() {
   if (!sessionPromise) {
@@ -16,17 +17,25 @@ async function getSession() {
   return sessionPromise;
 }
 
-function toNchw(data: Buffer) {
-  const out = new Float32Array(3 * 224 * 224);
-  for (let y = 0; y < 224; y++) {
-    for (let x = 0; x < 224; x++) {
-      const pixel = (y * 224 + x) * 3;
-      const pos = y * 224 + x;
+function numericDimension(value: number | string | null | undefined) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function toNchw(data: Buffer, width: number, height: number) {
+  const pixels = width * height;
+  const out = new Float32Array(3 * pixels);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixel = (y * width + x) * 3;
+      const pos = y * width + x;
       out[pos] = data[pixel];
-      out[224 * 224 + pos] = data[pixel + 1];
-      out[2 * 224 * 224 + pos] = data[pixel + 2];
+      out[pixels + pos] = data[pixel + 1];
+      out[2 * pixels + pos] = data[pixel + 2];
     }
   }
+
   return out;
 }
 
@@ -36,40 +45,67 @@ function toNhwc(data: Buffer) {
 
 export async function analyzeCertificate(bytes: ArrayBuffer) {
   const buffer = Buffer.from(bytes);
-  const { data, info } = await sharp(buffer)
-    .removeAlpha()
-    .resize(224, 224, { fit: "fill" })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  if (info.channels !== 3) {
-    throw new Error("Certificate image could not be converted to RGB");
-  }
-
   const session = await getSession();
+
   const inputName = session.inputNames[0];
   const outputName = session.outputNames[0];
-  const inputMeta = session.inputMetadata[inputName];
+  const inputMeta = inputName ? session.inputMetadata[inputName] : undefined;
 
   if (!inputName || !outputName || !inputMeta) {
     throw new Error("AI model has no usable input/output tensors");
   }
 
-  const shape = inputMeta.dimensions.map(Number);
-  let input: Float32Array;
-  let inputShape: number[];
+  const shape = inputMeta.dimensions;
+  if (shape.length !== 4) {
+    throw new Error(`Unsupported AI model input rank: ${JSON.stringify(shape)}`);
+  }
 
-  if (shape.length === 4 && shape[1] === 3 && shape[2] === 224 && shape[3] === 224) {
-    input = toNchw(data);
-    inputShape = [1, 3, 224, 224];
-  } else if (shape.length === 4 && shape[1] === 224 && shape[2] === 224 && shape[3] === 3) {
-    input = toNhwc(data);
-    inputShape = [1, 224, 224, 3];
+  const dim1 = numericDimension(shape[1]);
+  const dim2 = numericDimension(shape[2]);
+  const dim3 = numericDimension(shape[3]);
+
+  let width: number;
+  let height: number;
+  let channels: number;
+  let layout: "NCHW" | "NHWC";
+
+  if (dim1 === 3 && dim2 && dim3) {
+    layout = "NCHW";
+    channels = 3;
+    height = dim2;
+    width = dim3;
+  } else if (dim1 && dim2 && dim3 === 3) {
+    layout = "NHWC";
+    width = dim2;
+    height = dim1;
+    channels = 3;
   } else {
     throw new Error(`Unsupported AI model input shape: ${JSON.stringify(shape)}`);
   }
 
-  const tensor = new ort.Tensor("float32", input, inputShape);
+  const { data, info } = await sharp(buffer)
+    .removeAlpha()
+    .resize(width, height, { fit: "fill" })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  if (info.channels !== channels) {
+    throw new Error("Certificate image could not be converted to RGB");
+  }
+
+  const input =
+    layout === "NCHW"
+      ? toNchw(data, width, height)
+      : toNhwc(data);
+
+  const tensor = new ort.Tensor(
+    "float32",
+    input,
+    layout === "NCHW"
+      ? [1, 3, height, width]
+      : [1, height, width, 3],
+  );
+
   const result = await session.run({ [inputName]: tensor });
   const output = result[outputName] as ort.Tensor | undefined;
 
@@ -83,9 +119,13 @@ export async function analyzeCertificate(bytes: ArrayBuffer) {
   }
 
   const tamperProbability = Math.max(0, Math.min(1, probability));
-  const classification = tamperProbability >= 0.5 ? "TAMPERED" : "GENUINE";
+  const threshold = FALLBACK_THRESHOLD;
+  const classification =
+    tamperProbability >= threshold ? "TAMPERED" : "GENUINE";
   const confidence =
-    classification === "TAMPERED" ? tamperProbability : 1 - tamperProbability;
+    classification === "TAMPERED"
+      ? tamperProbability
+      : 1 - tamperProbability;
 
   return {
     classification,
