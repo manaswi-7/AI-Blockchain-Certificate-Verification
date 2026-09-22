@@ -1,5 +1,6 @@
-"""Optional runtime loader for the trained certificate tampering model."""
+"""Runtime loader for the trained certificate tampering model."""
 from pathlib import Path
+
 import numpy as np
 from PIL import Image
 
@@ -13,7 +14,9 @@ def load_model():
         return _model
     if not MODEL_PATH.exists():
         return None
+
     import tensorflow as tf
+
     _model = tf.keras.models.load_model(MODEL_PATH)
     return _model
 
@@ -22,10 +25,20 @@ def predict(image: Image.Image):
     model = load_model()
     if model is None:
         return None
-    arr = np.asarray(image.convert("RGB").resize((224, 224)), dtype=np.float32)[None, ...]
+
+    import tensorflow as tf
+
+    arr = np.asarray(
+        image.convert("RGB").resize((224, 224)),
+        dtype=np.float32,
+    )[None, ...]
+    # Training uses MobileNetV2 preprocess_input inside the model pipeline.
+    arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
+
     probability = float(model.predict(arr, verbose=0)[0][0])
     classification = "TAMPERED" if probability >= 0.5 else "GENUINE"
     confidence = probability if classification == "TAMPERED" else 1.0 - probability
+
     return {
         "classification": classification,
         "confidence": round(confidence, 4),
