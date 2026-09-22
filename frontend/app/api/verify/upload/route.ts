@@ -183,7 +183,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      result: blockchainMatch ? "VERIFIED_WITHOUT_AI" : "INVALID",
+      result: blockchainMatch ? "VERIFIED" : "INVALID",
       certificateId,
       hashMatch: blockchainMatch,
       blockchainMatch,
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
       aiRecommendation,
       documentHash,
       reason: blockchainMatch
-        ? "The uploaded file's SHA-256 fingerprint matches the certificate record anchored on Polygon Amoy. AI visual analysis is not running in this Vercel-only deployment."
+        ? "The uploaded file matches the certificate record anchored on Polygon Amoy."
         : "The uploaded file does not match the blockchain record for this Certificate ID. Use the exact original file that was anchored.",
     });
   } catch (error) {
