@@ -129,7 +129,7 @@ def template(s):
     )
     d.text((197, 64), "FUTURETECH UNIVERSITY", fill=(8, 28, 130), font=fnt(36, True))
     d.text((198, 111), "Autonomous | NAAC A++ | UGC Approved", fill=BLACK, font=fnt(17))
-    d.text((798, 168), "ACADEMIC GRADE MEMORANDUM", fill=BLACK, font=fnt(25, True))
+    d.text((798, 176), "ACADEMIC GRADE MEMORANDUM", fill=BLACK, font=fnt(25, True))
 
     d.rectangle((42, 195, 1005, 628), outline=(155, 155, 155), width=2)
     info = [
@@ -146,7 +146,6 @@ def template(s):
 
     d.rectangle((1018, 300, 1182, 464), fill=WHITE, outline=(40, 40, 40), width=2)
     im.paste(qr_image(f'{s["id"]}|{s["name"]}|{s["roll"]}'), (1040, 322))
-    d.text((1042, 462), "QR CODE", fill=(100, 100, 100), font=fnt(12))
 
     d.rectangle((1360, 198, 1660, 528), outline=(70, 70, 70), width=2)
     d.rectangle((1428, 248, 1593, 493), fill=(255, 250, 220), outline=(40, 40, 40), width=2)
@@ -189,7 +188,6 @@ def template(s):
 
     d.ellipse((1010, 1095, 1090, 1175), outline=(40, 100, 230), width=3)
     d.ellipse((1023, 1108, 1077, 1162), outline=(80, 130, 240), width=1)
-    d.text((1000, 1188), "OFFICIAL SEAL", fill=(255, 0, 0), font=fnt(10, True))
     d.arc((1450, 1110, 1570, 1160), 180, 350, fill=(60, 90, 160), width=2)
     d.line((1455, 1148, 1560, 1122), fill=(60, 90, 160), width=2)
     d.line((1430, 1170, 1610, 1170), fill=(40, 40, 40), width=1)
