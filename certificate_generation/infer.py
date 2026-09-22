@@ -1,10 +1,10 @@
-"""Run the trained tampering model on one certificate image."""
+"""Run the trained certificate-tampering model on one image."""
 from pathlib import Path
 import argparse
 import json
+import numpy as np
 import tensorflow as tf
 from PIL import Image
-import numpy as np
 
 MODEL = Path(__file__).resolve().parent / "models" / "certificate_tamper_model.keras"
 
@@ -12,14 +12,24 @@ MODEL = Path(__file__).resolve().parent / "models" / "certificate_tamper_model.k
 def predict(image_path: str):
     if not MODEL.exists():
         raise SystemExit(f"Model not found: {MODEL}. Train it first.")
+
     model = tf.keras.models.load_model(MODEL)
     image = Image.open(image_path).convert("RGB").resize((224, 224))
     arr = np.asarray(image, dtype=np.float32)[None, ...]
+
+    # Match the exact preprocessing used by train_tamper_model.py.
+    arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
     probability = float(model.predict(arr, verbose=0)[0][0])
-    # image_dataset_from_directory sorts labels alphabetically: real=0, tampered=1.
+
     classification = "TAMPERED" if probability >= 0.5 else "GENUINE"
-    confidence = probability if classification == "TAMPERED" else 1 - probability
-    return {"classification": classification, "confidence": round(confidence, 4), "tamper_probability": round(probability, 4)}
+    confidence = probability if probability >= 0.5 else 1.0 - probability
+
+    return {
+        "classification": classification,
+        "confidence": round(confidence, 4),
+        "tamper_probability": round(probability, 4),
+    }
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
