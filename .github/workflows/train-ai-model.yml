@@ -1,6 +1,9 @@
 name: Train certificate tampering model
 
 on:
+  push:
+    paths:
+      - ".github/workflows/train-ai-model.yml"
   workflow_dispatch:
     inputs:
       count:
