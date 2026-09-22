@@ -2,10 +2,7 @@
 const nextConfig = {
   serverExternalPackages: ["onnxruntime-node", "sharp"],
   outputFileTracingIncludes: {
-    "/api/verify/upload": [
-      "./models/**/*",
-      "./frontend/models/**/*",
-    ],
+    "/api/verify/upload": ["./models/certificate_tamper_model.onnx"],
   },
 };
 
