@@ -2,7 +2,10 @@
 const nextConfig = {
   serverExternalPackages: ["onnxruntime-node", "sharp"],
   outputFileTracingIncludes: {
-    "/api/verify/upload": ["./models/**/*"],
+    "/api/verify/upload": [
+      "./models/**/*",
+      "./frontend/models/**/*",
+    ],
   },
 };
 
