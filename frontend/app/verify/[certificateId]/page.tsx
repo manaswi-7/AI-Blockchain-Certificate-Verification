@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || (process.env.NODE_ENV === "development" ? "http://localhost:8080/api" : "/api");
 
 type PageProps = {
   params: Promise<{ certificateId: string }>;
@@ -14,8 +14,12 @@ export default function Verify({ params }: PageProps) {
   const [msg, setMsg] = useState("");
 
   async function check() {
-    const r = await fetch(`${API}/verify/${encodeURIComponent(certificateId)}`);
-    setD(await r.json());
+    try {
+      const r = await fetch(`${API}/verify/${encodeURIComponent(certificateId)}`);
+      setD(await r.json());
+    } catch {
+      setMsg("Verification service is unavailable.");
+    }
   }
 
   useEffect(() => {
