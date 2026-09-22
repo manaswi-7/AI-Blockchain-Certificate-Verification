@@ -85,7 +85,7 @@ jobs:
         run: npx hardhat test
 
   dataset:
-    name: Certificate dataset pipeline - syntax checks
+    name: Certificate dataset pipeline - end-to-end
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -101,3 +101,12 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compile dataset scripts
         run: python -m compileall -q .
+      - name: Generate a smoke-test dataset
+        run: python generate_500_certificate_dataset.py --count 20
+      - name: Validate image pairs and split
+        run: |
+          python split_dataset.py
+          python -c "from pathlib import Path; from PIL import Image; root=Path('dataset'); real=sorted((root/'real').glob('*.png')); tampered=sorted((root/'tampered').glob('*.png')); assert len(real)==20 and len(tampered)==20; assert all(Image.open(p).size==(2048,1447) for p in real+tampered); print('Dataset smoke test OK: 20 pairs, 2048x1447')"
+      - name: Clean smoke-test artifacts
+        if: always()
+        run: rm -rf dataset
