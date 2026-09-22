@@ -22,6 +22,7 @@ import argparse
 import csv
 import random
 import shutil
+import os
 
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
@@ -260,7 +261,7 @@ def generate(count=500):
     if TAMPERED.exists():shutil.rmtree(TAMPERED)
     REAL.mkdir(parents=True,exist_ok=True)
     TAMPERED.mkdir(parents=True,exist_ok=True)
-    with (DATASET/"metadata.csv").open("w",newline="",encoding="utf-8") as fp:
+    DATASET.mkdir(parents=True, exist_ok=True)\n    with (DATASET/"metadata.csv").open("w",newline="",encoding="utf-8") as fp:
         writer=csv.writer(fp)
         writer.writerow(["certificate_id","real_file","tampered_file","tamper_type",
                          "name","roll_number","date","department","semester","academic_year"])
