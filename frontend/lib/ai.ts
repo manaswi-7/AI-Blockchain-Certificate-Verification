@@ -5,15 +5,27 @@ import sharp from "sharp";
 
 let sessionPromise: Promise<ort.InferenceSession> | undefined;
 
-const MODEL_FILE = path.join(process.cwd(), "models", "certificate_tamper_model.onnx");
+const MODEL_CANDIDATES = [
+  path.join(process.cwd(), "models", "certificate_tamper_model.onnx"),
+  path.join(process.cwd(), "frontend", "models", "certificate_tamper_model.onnx"),
+];
+
+async function getModelBytes() {
+  for (const modelPath of MODEL_CANDIDATES) {
+    try {
+      return await fs.readFile(modelPath);
+    } catch {
+      // Try the next deployment layout.
+    }
+  }
+  throw new Error("AI model file is not deployed");
+}
 
 async function getSession() {
   if (!sessionPromise) {
-    sessionPromise = (async () => {
-      await fs.access(MODEL_FILE);
-      const model = await fs.readFile(MODEL_FILE);
-      return ort.InferenceSession.create(model);
-    })();
+    sessionPromise = getModelBytes().then((model) =>
+      ort.InferenceSession.create(new Uint8Array(model)),
+    );
   }
   return sessionPromise;
 }
@@ -32,7 +44,6 @@ export async function analyzeCertificate(bytes: ArrayBuffer) {
 
   const input = Float32Array.from(data, (value) => value);
   const session = await getSession();
-
   const inputName = session.inputNames[0];
   const outputName = session.outputNames[0];
 
@@ -49,7 +60,6 @@ export async function analyzeCertificate(bytes: ArrayBuffer) {
   }
 
   const probability = Number(output.data[0]);
-
   if (!Number.isFinite(probability)) {
     throw new Error("AI model returned an invalid prediction");
   }
@@ -57,9 +67,7 @@ export async function analyzeCertificate(bytes: ArrayBuffer) {
   const tamperProbability = Math.max(0, Math.min(1, probability));
   const classification = tamperProbability >= 0.5 ? "TAMPERED" : "GENUINE";
   const confidence =
-    classification === "TAMPERED"
-      ? tamperProbability
-      : 1 - tamperProbability;
+    classification === "TAMPERED" ? tamperProbability : 1 - tamperProbability;
 
   return {
     classification,
