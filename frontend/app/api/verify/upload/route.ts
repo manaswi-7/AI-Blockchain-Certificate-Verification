@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createPublicClient, http } from "viem";
 import { polygonAmoy } from "viem/chains";
+import { analyzeCertificate } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -63,8 +64,9 @@ export async function GET() {
       configured: Boolean(config.rpcUrl && config.contractAddress),
     },
     ai: {
-      available: false,
-      note: "AI service is not bundled into this Vercel route.",
+      available: true,
+      mode: "native-vercel-onnx",
+      model: "MobileNetV2 certificate tampering classifier",
     },
   });
 }
@@ -113,45 +115,20 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const documentHash = await sha256Hex(bytes);
 
-    // AI is optional. The public Vercel route can still perform
-    // cryptographic + blockchain verification when AI is unavailable.
     let aiPrediction = "UNAVAILABLE";
     let aiConfidence: number | undefined;
     let aiModelAvailable = false;
     let ocrFields: Record<string, unknown> | undefined;
     let aiRecommendation: string | undefined;
 
-    const aiServiceUrl = (process.env.AI_SERVICE_URL || "").replace(/\/$/, "");
-
-    if (aiServiceUrl) {
-      try {
-        const aiForm = new FormData();
-        aiForm.append(
-          "file",
-          new Blob([bytes], { type: file.type }),
-          file.name,
-        );
-
-        const aiResponse = await fetch(aiServiceUrl + "/analyze", {
-          method: "POST",
-          body: aiForm,
-          signal: AbortSignal.timeout(45_000),
-        });
-
-        if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
-          aiPrediction = aiData.classification || "UNAVAILABLE";
-          aiConfidence =
-            typeof aiData.confidence === "number"
-              ? aiData.confidence
-              : undefined;
-          aiModelAvailable = Boolean(aiData.model_available);
-          ocrFields = aiData.extracted_fields;
-          aiRecommendation = aiData.recommendation;
-        }
-      } catch (aiError) {
-        console.error("AI service unavailable", aiError);
-      }
+    try {
+      const aiData = await analyzeCertificate(bytes);
+      aiPrediction = aiData.classification;
+      aiConfidence = aiData.confidence;
+      aiModelAvailable = aiData.model_available;
+      aiRecommendation = aiData.recommendation;
+    } catch (aiError) {
+      console.error("Native AI inference unavailable", aiError);
     }
 
     if (!certificateId) {
