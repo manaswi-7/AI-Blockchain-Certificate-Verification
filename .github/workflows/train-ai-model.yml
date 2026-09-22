@@ -1,10 +1,12 @@
 name: Train certificate tampering model
 
 on:
-  push:
-    paths:
-      - "certificate_generation/**"
-      - ".github/workflows/train-ai-model.yml"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Number of genuine/tampered certificate pairs"
+        required: false
+        default: "500"
   workflow_dispatch:
     inputs:
       count:
