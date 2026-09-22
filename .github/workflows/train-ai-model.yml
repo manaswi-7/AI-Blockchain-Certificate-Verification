@@ -7,12 +7,6 @@ on:
         description: "Number of genuine/tampered certificate pairs"
         required: false
         default: "500"
-  workflow_dispatch:
-    inputs:
-      count:
-        description: "Number of genuine/tampered certificate pairs"
-        required: false
-        default: "500"
 
 permissions:
   contents: write
@@ -24,47 +18,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install training dependencies
         run: |
           python -m pip install --upgrade pip
           pip install tensorflow==2.15.1 pillow==11.1.0 qrcode==8.0 numpy==1.26.4 tf2onnx==1.16.1
+
       - name: Generate dataset
         working-directory: certificate_generation
         run: python generate_500_certificate_dataset.py --count ${{ inputs.count || '500' }}
+
       - name: Split dataset
         working-directory: certificate_generation
         run: python split_dataset.py --seed 42
+
       - name: Train model
         working-directory: certificate_generation
         run: python train_tamper_model.py
+
       - name: Verify model output
         run: |
           test -s certificate_generation/models/certificate_tamper_model.keras
           test -s certificate_generation/models/test_metrics.json
+          mkdir -p ai-service/models
           cp certificate_generation/models/certificate_tamper_model.keras ai-service/models/certificate_tamper_model.keras
           cp certificate_generation/models/test_metrics.json ai-service/models/test_metrics.json
+
       - name: Convert model to ONNX for Vercel
         run: |
           rm -rf /tmp/certificate_saved_model
           python - <<'PY'
           import tensorflow as tf
-          from pathlib import Path
 
           model = tf.keras.models.load_model(
               "certificate_generation/models/certificate_tamper_model.keras",
               compile=False,
           )
-          export_dir = "/tmp/certificate_saved_model"
-          tf.saved_model.save(model, export_dir)
-          Path("frontend/models").mkdir(parents=True, exist_ok=True)
-          print(f"Exported SavedModel to {export_dir}")
+          tf.saved_model.save(model, "/tmp/certificate_saved_model")
+          print("Exported SavedModel")
           PY
-          python -m tf2onnx.convert             --saved-model /tmp/certificate_saved_model             --output frontend/models/certificate_tamper_model.onnx             --opset 17
+
+          mkdir -p frontend/models
+          python -m tf2onnx.convert \
+            --saved-model /tmp/certificate_saved_model \
+            --output frontend/models/certificate_tamper_model.onnx \
+            --opset 17
+
           test -s frontend/models/certificate_tamper_model.onnx
+
       - name: Commit trained models
         run: |
           git config user.name "github-actions[bot]"
