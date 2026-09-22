@@ -1,7 +1,7 @@
 """Split paired genuine/tampered certificates without leakage.
 
-A certificate ID must have exactly one genuine image and one tampered image.
-Both images are kept in the same split.
+Every certificate ID must have exactly one genuine image and exactly one
+tampered image. The pair is always assigned to the same split.
 """
 from pathlib import Path
 import argparse
@@ -17,27 +17,46 @@ def source_id(path: Path) -> str:
     return path.stem.split("__", 1)[0]
 
 
+def index_unique(paths, label):
+    mapping = {}
+    duplicates = []
+    for path in paths:
+        cid = source_id(path)
+        if cid in mapping:
+            duplicates.append(cid)
+        mapping[cid] = path
+
+    if duplicates:
+        sample = ", ".join(sorted(set(duplicates))[:5])
+        raise SystemExit(f"Duplicate {label} files for certificate IDs: {sample}")
+    return mapping
+
+
 def main(seed: int = 42):
     real = sorted((DATASET / "real").glob("*.png"))
     tampered = sorted((DATASET / "tampered").glob("*.png"))
-    real_map = {source_id(p): p for p in real}
-    tampered_map = {source_id(p): p for p in tampered}
 
-    ids = sorted(set(real_map) & set(tampered_map))
-    missing_real = sorted(set(tampered_map) - set(real_map))
-    missing_tampered = sorted(set(real_map) - set(tampered_map))
+    real_map = index_unique(real, "genuine")
+    tampered_map = index_unique(tampered, "tampered")
 
-    if missing_real or missing_tampered:
+    real_ids = set(real_map)
+    tampered_ids = set(tampered_map)
+    if real_ids != tampered_ids:
+        missing_real = sorted(tampered_ids - real_ids)
+        missing_tampered = sorted(real_ids - tampered_ids)
         raise SystemExit(
             "Dataset pairing error. "
-            f"Missing real for {len(missing_real)} IDs; "
+            f"Missing genuine for {len(missing_real)} IDs; "
             f"missing tampered for {len(missing_tampered)} IDs."
         )
+
+    ids = sorted(real_ids)
     if len(ids) < 10:
         raise SystemExit(f"Need at least 10 complete pairs; found {len(ids)}.")
 
     rng = random.Random(seed)
     rng.shuffle(ids)
+
     n = len(ids)
     train_end = int(n * 0.70)
     val_end = train_end + int(n * 0.15)
@@ -46,6 +65,9 @@ def main(seed: int = 42):
         "validation": ids[train_end:val_end],
         "test": ids[val_end:],
     }
+
+    if any(not split_ids for split_ids in assignments.values()):
+        raise SystemExit(f"Dataset is too small for train/validation/test: {n} pairs.")
 
     if SPLIT.exists():
         shutil.rmtree(SPLIT)
