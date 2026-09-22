@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createPublicClient, http } from "viem";
 import { polygonAmoy } from "viem/chains";
-import { analyzeCertificate } from "@/lib/ai";
+import { analyzeCertificate } from "../../../../lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
