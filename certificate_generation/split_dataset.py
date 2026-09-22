@@ -1,10 +1,8 @@
-"""Split genuine/tampered data into train/validation/test without source leakage.
+"""Split paired genuine/tampered certificates without leakage.
 
-All variants belonging to the same source certificate ID are assigned to one
-split, so a genuine certificate and its tampered variants cannot leak across
-train/validation/test.
+A certificate ID must have exactly one genuine image and one tampered image.
+Both images are kept in the same split.
 """
-
 from pathlib import Path
 import argparse
 import random
@@ -19,50 +17,49 @@ def source_id(path: Path) -> str:
     return path.stem.split("__", 1)[0]
 
 
-def assign_groups(source_ids: list[str], rng: random.Random):
-    ids = list(source_ids)
+def main(seed: int = 42):
+    real = sorted((DATASET / "real").glob("*.png"))
+    tampered = sorted((DATASET / "tampered").glob("*.png"))
+    real_map = {source_id(p): p for p in real}
+    tampered_map = {source_id(p): p for p in tampered}
+
+    ids = sorted(set(real_map) & set(tampered_map))
+    missing_real = sorted(set(tampered_map) - set(real_map))
+    missing_tampered = sorted(set(real_map) - set(tampered_map))
+
+    if missing_real or missing_tampered:
+        raise SystemExit(
+            "Dataset pairing error. "
+            f"Missing real for {len(missing_real)} IDs; "
+            f"missing tampered for {len(missing_tampered)} IDs."
+        )
+    if len(ids) < 10:
+        raise SystemExit(f"Need at least 10 complete pairs; found {len(ids)}.")
+
+    rng = random.Random(seed)
     rng.shuffle(ids)
     n = len(ids)
     train_end = int(n * 0.70)
     val_end = train_end + int(n * 0.15)
-    return {
-        "train": set(ids[:train_end]),
-        "validation": set(ids[train_end:val_end]),
-        "test": set(ids[val_end:]),
+    assignments = {
+        "train": ids[:train_end],
+        "validation": ids[train_end:val_end],
+        "test": ids[val_end:],
     }
-
-
-def copy_by_assignment(files: list[Path], assignments: dict[str, set[str]], label: str):
-    for split, ids in assignments.items():
-        target = SPLIT / split / label
-        target.mkdir(parents=True, exist_ok=True)
-        for path in files:
-            if source_id(path) in ids:
-                shutil.copy2(path, target / path.name)
-
-
-def main(seed: int = 42):
-    real = sorted((DATASET / "real").glob("*.png"))
-    tampered = sorted((DATASET / "tampered").glob("*.png"))
-    if not real or not tampered:
-        raise SystemExit("Generate both real and tampered datasets first.")
 
     if SPLIT.exists():
         shutil.rmtree(SPLIT)
 
-    real_ids = {source_id(p) for p in real}
-    tampered_ids = {source_id(p) for p in tampered}
-    source_ids = sorted(real_ids | tampered_ids)
-    assignments = assign_groups(source_ids, random.Random(seed))
+    for split, split_ids in assignments.items():
+        for label, mapping in (("real", real_map), ("tampered", tampered_map)):
+            target = SPLIT / split / label
+            target.mkdir(parents=True, exist_ok=True)
+            for cid in split_ids:
+                shutil.copy2(mapping[cid], target / mapping[cid].name)
 
-    copy_by_assignment(real, assignments, "real")
-    copy_by_assignment(tampered, assignments, "tampered")
-
-    print("Dataset split complete (grouped by source certificate):")
-    for split in ("train", "validation", "test"):
-        real_count = sum(source_id(p) in assignments[split] for p in real)
-        tampered_count = sum(source_id(p) in assignments[split] for p in tampered)
-        print(f"  {split}: real={real_count}, tampered={tampered_count}, sources={len(assignments[split])}")
+    print("Dataset split complete:")
+    for split, split_ids in assignments.items():
+        print(f"  {split}: {len(split_ids)} certificate pairs")
 
 
 if __name__ == "__main__":
