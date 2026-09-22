@@ -1,4 +1,4 @@
-"""Train a transfer-learning certificate tampering classifier.
+"""Train a transfer-learning certificate tampering classifier.\n\nProduction training is automatically run by GitHub Actions when this file changes.
 
 Expected dataset layout:
   dataset/split/train/{real,tampered}
