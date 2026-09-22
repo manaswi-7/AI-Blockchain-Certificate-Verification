@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 
 const configuredApi = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
-const API = configuredApi || (process.env.NODE_ENV === "development" ? "http://localhost:8080/api" : "");
+const API = configuredApi || (process.env.NODE_ENV === "development" ? "http://localhost:8080/api" : "/api");
 
 function resultLabel(result?: string) {
   switch (result) {
