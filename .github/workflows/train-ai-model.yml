@@ -18,7 +18,7 @@ permissions:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,10 +68,7 @@ jobs:
           PY
 
           mkdir -p frontend/models
-          python -m tf2onnx.convert \
-            --saved-model /tmp/certificate_saved_model \
-            --output frontend/models/certificate_tamper_model.onnx \
-            --opset 17
+          python -m tf2onnx.convert             --saved-model /tmp/certificate_saved_model             --output frontend/models/certificate_tamper_model.onnx             --opset 17
 
           test -s frontend/models/certificate_tamper_model.onnx
 
@@ -81,6 +78,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ai-service/models/certificate_tamper_model.keras ai-service/models/test_metrics.json frontend/models/certificate_tamper_model.onnx
           git diff --cached --quiet && exit 0
-          git commit -m "Add trained certificate tampering models"
+          git commit -m "Retrain certificate tampering model with fine-tuning and higher resolution"
           git pull --rebase origin main
           git push origin HEAD:main
