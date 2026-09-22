@@ -19,61 +19,49 @@ jobs:
   train:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install training dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install tensorflow==2.18.0 pillow==11.1.0 qrcode==8.0 numpy==2.0.2
-
-      - name: Generate genuine and tampered certificates
+          pip install tensorflow==2.18.0 pillow==11.1.0 qrcode==8.0 numpy==2.0.2 tf2onnx==1.16.1
+      - name: Generate dataset
         working-directory: certificate_generation
-        run: |
-          python generate_500_certificate_dataset.py --count ${{ inputs.count }}
-
-      - name: Split dataset without certificate-pair leakage
+        run: python generate_500_certificate_dataset.py --count ${{ inputs.count || '500' }}
+      - name: Split dataset
         working-directory: certificate_generation
         run: python split_dataset.py --seed 42
-
-      - name: Train and evaluate MobileNetV2 tamper model
+      - name: Train model
         working-directory: certificate_generation
         run: python train_tamper_model.py
-
       - name: Verify model output
         run: |
-          test -f certificate_generation/models/certificate_tamper_model.keras
-          test -f certificate_generation/models/test_metrics.json
+          test -s certificate_generation/models/certificate_tamper_model.keras
+          test -s certificate_generation/models/test_metrics.json
           cp certificate_generation/models/certificate_tamper_model.keras ai-service/models/certificate_tamper_model.keras
           cp certificate_generation/models/test_metrics.json ai-service/models/test_metrics.json
-
-      - name: Prepare lightweight Vercel model
+      - name: Convert model to ONNX for Vercel
         run: |
           python - <<'PY'
           import tensorflow as tf
+          import tf2onnx
           from pathlib import Path
           model = tf.keras.models.load_model("certificate_generation/models/certificate_tamper_model.keras", compile=False)
-          converter = tf.lite.TFLiteConverter.from_keras_model(model)
-          converter.optimizations = [tf.lite.Optimize.DEFAULT]
-          out = Path("frontend/models/certificate_tamper_model.tflite")
-          out.parent.mkdir(parents=True, exist_ok=True)
-          out.write_bytes(converter.convert())
-          print(f"Created {out}: {out.stat().st_size} bytes")
+          spec = (tf.TensorSpec((None, 224, 224, 3), tf.float32, name="input"),)
+          Path("frontend/models").mkdir(parents=True, exist_ok=True)
+          tf2onnx.convert.from_keras(model, input_signature=spec, opset=17, output_path="frontend/models/certificate_tamper_model.onnx")
           PY
-          test -s frontend/models/certificate_tamper_model.tflite
-
-      - name: Commit trained model to repository
+          test -s frontend/models/certificate_tamper_model.onnx
+      - name: Commit trained models
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ai-service/models/certificate_tamper_model.keras ai-service/models/test_metrics.json
+          git add ai-service/models/certificate_tamper_model.keras ai-service/models/test_metrics.json frontend/models/certificate_tamper_model.onnx
           git diff --cached --quiet && exit 0
-          git commit -m "Add trained certificate tampering model"
+          git commit -m "Add trained certificate tampering models"
           git push
