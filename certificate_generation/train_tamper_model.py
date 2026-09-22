@@ -91,7 +91,7 @@ def main():
             monitor="val_loss", patience=3, restore_best_weights=True
         ),
         keras.callbacks.ModelCheckpoint(
-            MODEL_DIR / "certificate_tamper_model.keras",
+            str(MODEL_DIR / "certificate_tamper_model.keras"),
             monitor="val_loss",
             save_best_only=True,
         ),
